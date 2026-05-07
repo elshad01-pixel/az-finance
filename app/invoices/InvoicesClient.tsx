@@ -35,7 +35,7 @@ const INITIAL_INVOICES: Invoice[] = [
 const STATUS_STYLES: Record<Status, string> = {
   Paid:   'bg-green-100 text-green-700 ring-1 ring-green-200',
   Unpaid: 'bg-red-100 text-red-700 ring-1 ring-red-200',
-  Draft:  'bg-gray-100 text-gray-500 ring-1 ring-gray-200',
+  Draft:  'bg-gray-100 text-gray-600 ring-1 ring-gray-300',
 }
 
 const FILTER_TABS: FilterTab[] = ['All', 'Paid', 'Unpaid', 'Draft']

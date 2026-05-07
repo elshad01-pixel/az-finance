@@ -8,7 +8,7 @@ const summaryCards = [
     badgePositive: true,
     note: "vs last month",
     borderAccent: "border-l-blue-500",
-    gradient: "from-white to-blue-50/40",
+    gradient: "from-blue-50 to-white",
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -24,7 +24,7 @@ const summaryCards = [
     badgePositive: false,
     note: "awaiting payment",
     borderAccent: "border-l-orange-500",
-    gradient: "from-white to-orange-50/40",
+    gradient: "from-orange-50 to-white",
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -40,7 +40,7 @@ const summaryCards = [
     badgePositive: false,
     note: "vs last month",
     borderAccent: "border-l-red-500",
-    gradient: "from-white to-red-50/40",
+    gradient: "from-red-50 to-white",
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -56,7 +56,7 @@ const summaryCards = [
     badgePositive: true,
     note: "vs last month",
     borderAccent: "border-l-green-500",
-    gradient: "from-white to-green-50/40",
+    gradient: "from-green-50 to-white",
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -128,7 +128,7 @@ export default function DashboardPage() {
             </div>
 
             <div>
-              <p className="text-3xl font-bold text-gray-900 tracking-tight">{card.value}</p>
+              <p className="text-4xl font-bold text-gray-900 tracking-tight">{card.value}</p>
               <div className="mt-2 flex items-center gap-2">
                 <span
                   className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
@@ -215,7 +215,7 @@ export default function DashboardPage() {
             <Link
               key={action.label}
               href={action.href}
-              className={`flex items-center gap-2.5 ${action.color} text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm`}
+              className={`flex items-center gap-3 ${action.color} text-white px-6 py-3 rounded-lg text-sm font-semibold transition-colors shadow-sm`}
             >
               {action.icon}
               {action.label}

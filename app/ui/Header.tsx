@@ -15,7 +15,7 @@ export default function Header() {
   const title = PAGE_TITLES[pathname] ?? 'AzFinance'
 
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shrink-0">
+    <header className="bg-white border-b border-gray-200 shadow-sm px-6 py-4 flex items-center justify-between shrink-0">
       <div>
         <h1 className="text-lg font-semibold text-gray-800">{title}</h1>
         <p className="text-xs text-gray-400 mt-0.5">May 2026</p>
