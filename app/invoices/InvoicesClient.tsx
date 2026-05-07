@@ -3,6 +3,7 @@
 import { useState } from 'react'
 
 type Status = 'Paid' | 'Unpaid' | 'Draft'
+type FilterTab = 'All' | Status
 
 interface Invoice {
   id: number
@@ -32,10 +33,12 @@ const INITIAL_INVOICES: Invoice[] = [
 ]
 
 const STATUS_STYLES: Record<Status, string> = {
-  Paid:   'bg-green-100 text-green-700',
-  Unpaid: 'bg-red-100   text-red-700',
-  Draft:  'bg-gray-100  text-gray-500',
+  Paid:   'bg-green-100 text-green-700 ring-1 ring-green-200',
+  Unpaid: 'bg-red-100 text-red-700 ring-1 ring-red-200',
+  Draft:  'bg-gray-100 text-gray-500 ring-1 ring-gray-200',
 }
+
+const FILTER_TABS: FilterTab[] = ['All', 'Paid', 'Unpaid', 'Draft']
 
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -50,6 +53,8 @@ const EMPTY_LINE = (): LineItem => ({ id: Date.now(), description: '', quantity:
 export default function InvoicesClient() {
   const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES)
   const [showModal, setShowModal] = useState(false)
+  const [search, setSearch] = useState('')
+  const [activeFilter, setActiveFilter] = useState<FilterTab>('All')
 
   const [clientName, setClientName] = useState('')
   const [invoiceDate, setInvoiceDate] = useState('')
@@ -59,6 +64,12 @@ export default function InvoicesClient() {
   const total = lineItems.reduce((sum, item) => {
     return sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)
   }, 0)
+
+  const filtered = invoices.filter(inv => {
+    const matchesSearch = inv.client.toLowerCase().includes(search.toLowerCase())
+    const matchesFilter = activeFilter === 'All' || inv.status === activeFilter
+    return matchesSearch && matchesFilter
+  })
 
   function updateLine(id: number, field: keyof Omit<LineItem, 'id'>, val: string) {
     setLineItems(prev => prev.map(l => l.id === id ? { ...l, [field]: val } : l))
@@ -89,9 +100,12 @@ export default function InvoicesClient() {
     closeModal()
   }
 
-  const paid   = invoices.filter(i => i.status === 'Paid').length
-  const unpaid = invoices.filter(i => i.status === 'Unpaid').length
-  const draft  = invoices.filter(i => i.status === 'Draft').length
+  const counts: Record<FilterTab, number> = {
+    All:    invoices.length,
+    Paid:   invoices.filter(i => i.status === 'Paid').length,
+    Unpaid: invoices.filter(i => i.status === 'Unpaid').length,
+    Draft:  invoices.filter(i => i.status === 'Draft').length,
+  }
 
   return (
     <div>
@@ -101,10 +115,10 @@ export default function InvoicesClient() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Invoices</h2>
           <p className="text-gray-500 text-sm mt-1">
-            {invoices.length} total &mdash;{' '}
-            <span className="text-green-600 font-medium">{paid} paid</span>,{' '}
-            <span className="text-red-500 font-medium">{unpaid} unpaid</span>,{' '}
-            <span className="text-gray-400 font-medium">{draft} draft</span>
+            {counts.All} total &mdash;{' '}
+            <span className="text-green-600 font-medium">{counts.Paid} paid</span>,{' '}
+            <span className="text-red-500 font-medium">{counts.Unpaid} unpaid</span>,{' '}
+            <span className="text-gray-400 font-medium">{counts.Draft} draft</span>
           </p>
         </div>
         <button
@@ -118,6 +132,43 @@ export default function InvoicesClient() {
         </button>
       </div>
 
+      {/* Search + filter bar */}
+      <div className="mb-4 flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            placeholder="Search by client name…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full border border-gray-200 bg-white rounded-lg pl-9 pr-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm transition"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg p-1 shadow-sm">
+          {FILTER_TABS.map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveFilter(tab)}
+              className={`px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                activeFilter === tab
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {tab}
+              <span className={`ml-1.5 text-xs ${activeFilter === tab ? 'opacity-75' : 'opacity-50'}`}>
+                {counts[tab]}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="overflow-x-auto">
@@ -125,22 +176,22 @@ export default function InvoicesClient() {
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
                 {['Invoice #', 'Client Name', 'Date', 'Due Date', 'Amount (AZN)', 'Status'].map(h => (
-                  <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">
+                  <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {invoices.map(inv => (
-                <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4 text-sm font-semibold text-blue-600">{inv.number}</td>
+              {filtered.map(inv => (
+                <tr key={inv.id} className="hover:bg-blue-50/40 transition-colors cursor-default group">
+                  <td className="px-6 py-4 text-sm font-semibold text-blue-600 group-hover:text-blue-700">{inv.number}</td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.client}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{formatDate(inv.date)}</td>
                   <td className="px-6 py-4 text-sm text-gray-500">{formatDate(inv.dueDate)}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900">{fmt(inv.amount)}</td>
+                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 tabular-nums">{fmt(inv.amount)}</td>
                   <td className="px-6 py-4">
-                    <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${STATUS_STYLES[inv.status]}`}>
+                    <span className={`inline-flex items-center text-xs font-semibold px-3 py-1 rounded-full ${STATUS_STYLES[inv.status]}`}>
                       {inv.status}
                     </span>
                   </td>
@@ -150,9 +201,11 @@ export default function InvoicesClient() {
           </table>
         </div>
 
-        {invoices.length === 0 && (
+        {filtered.length === 0 && (
           <div className="text-center py-16 text-gray-400 text-sm">
-            No invoices yet. Click <strong>New Invoice</strong> to create one.
+            {search || activeFilter !== 'All'
+              ? 'No invoices match your search or filter.'
+              : <>No invoices yet. Click <strong>New Invoice</strong> to create one.</>}
           </div>
         )}
       </div>
@@ -165,7 +218,6 @@ export default function InvoicesClient() {
         >
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl">
 
-            {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">New Invoice</h3>
@@ -178,11 +230,9 @@ export default function InvoicesClient() {
               </button>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleSubmit}>
               <div className="px-6 py-5 space-y-5">
 
-                {/* Client */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Client Name</label>
                   <input
@@ -195,7 +245,6 @@ export default function InvoicesClient() {
                   />
                 </div>
 
-                {/* Dates */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Invoice Date</label>
@@ -219,18 +268,15 @@ export default function InvoicesClient() {
                   </div>
                 </div>
 
-                {/* Line items */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Line Items</label>
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    {/* Column headers */}
                     <div className="grid grid-cols-[1fr_72px_104px_88px_32px] bg-gray-50 border-b border-gray-200">
                       {['Description', 'Qty', 'Unit Price', 'Total', ''].map(h => (
                         <div key={h} className="text-xs font-semibold text-gray-500 px-3 py-2">{h}</div>
                       ))}
                     </div>
 
-                    {/* Rows */}
                     <div className="divide-y divide-gray-100">
                       {lineItems.map(item => {
                         const lineTotal = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)
@@ -285,7 +331,6 @@ export default function InvoicesClient() {
                       })}
                     </div>
 
-                    {/* Footer: add row + total */}
                     <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-3 py-2.5">
                       <button
                         type="button"
@@ -309,7 +354,6 @@ export default function InvoicesClient() {
 
               </div>
 
-              {/* Form footer */}
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
                 <button
                   type="button"

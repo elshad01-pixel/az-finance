@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 const summaryCards = [
   {
     title: "Total Revenue",
@@ -5,6 +7,8 @@ const summaryCards = [
     badge: "+12.5%",
     badgePositive: true,
     note: "vs last month",
+    borderAccent: "border-l-blue-500",
+    gradient: "from-white to-blue-50/40",
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -19,6 +23,8 @@ const summaryCards = [
     badge: "7 invoices",
     badgePositive: false,
     note: "awaiting payment",
+    borderAccent: "border-l-orange-500",
+    gradient: "from-white to-orange-50/40",
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -33,6 +39,8 @@ const summaryCards = [
     badge: "+5.2%",
     badgePositive: false,
     note: "vs last month",
+    borderAccent: "border-l-red-500",
+    gradient: "from-white to-red-50/40",
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -47,6 +55,8 @@ const summaryCards = [
     badge: "+18.3%",
     badgePositive: true,
     note: "vs last month",
+    borderAccent: "border-l-green-500",
+    gradient: "from-white to-green-50/40",
     icon: (
       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -54,6 +64,42 @@ const summaryCards = [
       </svg>
     ),
     iconBg: "bg-green-100 text-green-600",
+  },
+];
+
+const quickActions = [
+  {
+    label: "New Invoice",
+    href: "/invoices",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+    color: "bg-blue-600 hover:bg-blue-700",
+  },
+  {
+    label: "Add Expense",
+    href: "/expenses",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+      </svg>
+    ),
+    color: "bg-red-500 hover:bg-red-600",
+  },
+  {
+    label: "Add Client",
+    href: "/clients",
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+      </svg>
+    ),
+    color: "bg-green-600 hover:bg-green-700",
   },
 ];
 
@@ -67,11 +113,12 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
         {summaryCards.map((card) => (
           <div
             key={card.title}
-            className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col gap-4 hover:shadow-md transition-shadow"
+            className={`bg-gradient-to-br ${card.gradient} rounded-xl shadow-md border border-gray-100 border-l-4 ${card.borderAccent} p-5 flex flex-col gap-4 hover:shadow-lg transition-shadow`}
           >
             <div className="flex items-center justify-between">
               <p className="text-sm font-medium text-gray-500">{card.title}</p>
@@ -81,7 +128,7 @@ export default function DashboardPage() {
             </div>
 
             <div>
-              <p className="text-2xl font-bold text-gray-900">{card.value}</p>
+              <p className="text-3xl font-bold text-gray-900 tracking-tight">{card.value}</p>
               <div className="mt-2 flex items-center gap-2">
                 <span
                   className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
@@ -99,6 +146,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* Charts + Recent Activity */}
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">Revenue vs Expenses</h3>
@@ -156,6 +204,23 @@ export default function DashboardPage() {
               </li>
             ))}
           </ul>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">Quick Actions</h3>
+        <div className="flex flex-wrap gap-3">
+          {quickActions.map((action) => (
+            <Link
+              key={action.label}
+              href={action.href}
+              className={`flex items-center gap-2.5 ${action.color} text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm`}
+            >
+              {action.icon}
+              {action.label}
+            </Link>
+          ))}
         </div>
       </div>
     </div>
