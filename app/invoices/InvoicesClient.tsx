@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 type Status = 'Paid' | 'Unpaid' | 'Draft'
 type FilterTab = 'All' | Status
@@ -10,7 +11,7 @@ interface Invoice {
   number: string
   client: string
   date: string
-  dueDate: string
+  due_date: string
   amount: number
   status: Status
 }
@@ -21,16 +22,6 @@ interface LineItem {
   quantity: string
   unitPrice: string
 }
-
-const INITIAL_INVOICES: Invoice[] = [
-  { id: 1, number: 'INV-1001', client: 'Baku Tech LLC',     date: '2026-04-15', dueDate: '2026-05-15', amount: 4200,  status: 'Paid'   },
-  { id: 2, number: 'INV-1002', client: 'Caspian Energy',    date: '2026-04-22', dueDate: '2026-05-22', amount: 7800,  status: 'Paid'   },
-  { id: 3, number: 'INV-1003', client: 'Atlas Group',       date: '2026-05-01', dueDate: '2026-05-31', amount: 3500,  status: 'Unpaid' },
-  { id: 4, number: 'INV-1004', client: 'Silk Road Hotels',  date: '2026-05-03', dueDate: '2026-06-03', amount: 9200,  status: 'Unpaid' },
-  { id: 5, number: 'INV-1005', client: 'Azerenerji',        date: '2026-05-05', dueDate: '2026-06-05', amount: 1850,  status: 'Unpaid' },
-  { id: 6, number: 'INV-1006', client: 'Socar Trading',     date: '2026-05-06', dueDate: '2026-06-06', amount: 12400, status: 'Draft'  },
-  { id: 7, number: 'INV-1007', client: 'Kapital Bank',      date: '2026-04-10', dueDate: '2026-05-10', amount: 2500,  status: 'Paid'   },
-]
 
 const STATUS_STYLES: Record<Status, string> = {
   Paid:   'bg-green-100 text-green-700 ring-1 ring-green-200',
@@ -51,15 +42,28 @@ function fmt(n: number) {
 const EMPTY_LINE = (): LineItem => ({ id: Date.now(), description: '', quantity: '1', unitPrice: '' })
 
 export default function InvoicesClient() {
-  const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES)
+  const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [loading, setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [search, setSearch] = useState('')
+  const [search, setSearch]       = useState('')
   const [activeFilter, setActiveFilter] = useState<FilterTab>('All')
 
   const [clientName, setClientName] = useState('')
   const [invoiceDate, setInvoiceDate] = useState('')
-  const [dueDate, setDueDate]       = useState('')
-  const [lineItems, setLineItems]   = useState<LineItem[]>([EMPTY_LINE()])
+  const [dueDate, setDueDate]         = useState('')
+  const [lineItems, setLineItems]     = useState<LineItem[]>([EMPTY_LINE()])
+  const [saving, setSaving]           = useState(false)
+
+  useEffect(() => {
+    supabase
+      .from('invoices')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setInvoices((data as Invoice[]) ?? [])
+        setLoading(false)
+      })
+  }, [])
 
   const total = lineItems.reduce((sum, item) => {
     return sum + (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)
@@ -86,17 +90,19 @@ export default function InvoicesClient() {
 
   function closeModal() { setShowModal(false); resetForm() }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setInvoices(prev => [{
-      id:      Date.now(),
-      number:  `INV-${1000 + prev.length + 1}`,
-      client:  clientName,
-      date:    invoiceDate,
-      dueDate,
-      amount:  total,
-      status:  'Draft',
-    }, ...prev])
+    setSaving(true)
+    const number = `INV-${1000 + invoices.length + 1}`
+    const { data, error } = await supabase
+      .from('invoices')
+      .insert({ number, client: clientName, date: invoiceDate, due_date: dueDate, amount: total, status: 'Draft' })
+      .select()
+      .single()
+    if (!error && data) {
+      setInvoices(prev => [data as Invoice, ...prev])
+    }
+    setSaving(false)
     closeModal()
   }
 
@@ -171,42 +177,50 @@ export default function InvoicesClient() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px]">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                {['Invoice #', 'Client Name', 'Date', 'Due Date', 'Amount (AZN)', 'Status'].map(h => (
-                  <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {filtered.map(inv => (
-                <tr key={inv.id} className="hover:bg-blue-50/40 transition-colors cursor-default group">
-                  <td className="px-6 py-4 text-sm font-semibold text-blue-600 group-hover:text-blue-700">{inv.number}</td>
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.client}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{formatDate(inv.date)}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{formatDate(inv.dueDate)}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 tabular-nums">{fmt(inv.amount)}</td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center text-xs font-semibold px-3 py-1 rounded-full ${STATUS_STYLES[inv.status]}`}>
-                      {inv.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        {filtered.length === 0 && (
-          <div className="text-center py-16 text-gray-400 text-sm">
-            {search || activeFilter !== 'All'
-              ? 'No invoices match your search or filter.'
-              : <>No invoices yet. Click <strong>New Invoice</strong> to create one.</>}
+        {loading ? (
+          <div className="flex items-center justify-center py-20 text-sm text-gray-400">
+            Loading invoices…
           </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px]">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    {['Invoice #', 'Client Name', 'Date', 'Due Date', 'Amount (AZN)', 'Status'].map(h => (
+                      <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {filtered.map(inv => (
+                    <tr key={inv.id} className="hover:bg-blue-50/40 transition-colors cursor-default group">
+                      <td className="px-6 py-4 text-sm font-semibold text-blue-600 group-hover:text-blue-700">{inv.number}</td>
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.client}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{formatDate(inv.date)}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">{formatDate(inv.due_date)}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 tabular-nums">{fmt(inv.amount)}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center text-xs font-semibold px-3 py-1 rounded-full ${STATUS_STYLES[inv.status]}`}>
+                          {inv.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {filtered.length === 0 && (
+              <div className="text-center py-16 text-gray-400 text-sm">
+                {search || activeFilter !== 'All'
+                  ? 'No invoices match your search or filter.'
+                  : <>No invoices yet. Click <strong>New Invoice</strong> to create one.</>}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -318,7 +332,6 @@ export default function InvoicesClient() {
                                   type="button"
                                   onClick={() => removeLine(item.id)}
                                   className="text-gray-300 hover:text-red-400 transition-colors p-0.5 rounded"
-                                  title="Remove"
                                 >
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -344,9 +357,7 @@ export default function InvoicesClient() {
                       </button>
                       <div className="text-sm text-gray-700">
                         Total:{' '}
-                        <span className="font-bold text-blue-700 tabular-nums">
-                          ₼&nbsp;{total.toFixed(2)}
-                        </span>
+                        <span className="font-bold text-blue-700 tabular-nums">₼&nbsp;{total.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
@@ -364,9 +375,10 @@ export default function InvoicesClient() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-lg transition-colors shadow-sm"
+                  disabled={saving}
+                  className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-lg transition-colors shadow-sm disabled:opacity-60"
                 >
-                  Create Invoice
+                  {saving ? 'Saving…' : 'Create Invoice'}
                 </button>
               </div>
             </form>

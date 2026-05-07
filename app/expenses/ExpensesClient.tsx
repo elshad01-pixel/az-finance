@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 type Category = 'Office' | 'Utilities' | 'Salaries' | 'Transport' | 'Other'
 
@@ -22,17 +23,6 @@ const CATEGORY_STYLES: Record<Category, string> = {
   Other:     'bg-gray-100   text-gray-600',
 }
 
-const INITIAL_EXPENSES: Expense[] = [
-  { id: 1, date: '2026-05-01', description: 'Office rent',          category: 'Office',    amount: 3500  },
-  { id: 2, date: '2026-05-02', description: 'Electricity bill',     category: 'Utilities', amount: 320   },
-  { id: 3, date: '2026-05-03', description: 'Staff salaries',       category: 'Salaries',  amount: 18500 },
-  { id: 4, date: '2026-05-04', description: 'Office supplies',      category: 'Office',    amount: 450   },
-  { id: 5, date: '2026-05-05', description: 'Taxi & fuel',          category: 'Transport', amount: 180   },
-  { id: 6, date: '2026-05-06', description: 'Internet & phone',     category: 'Utilities', amount: 210   },
-  { id: 7, date: '2026-05-06', description: 'Courier delivery',     category: 'Other',     amount: 85    },
-  { id: 8, date: '2026-05-07', description: 'Printer cartridges',   category: 'Office',    amount: 120   },
-]
-
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
 }
@@ -42,14 +32,26 @@ function fmt(n: number) {
 }
 
 export default function ExpensesClient() {
-  const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES)
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [loading, setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [saving, setSaving]       = useState(false)
 
-  // form state
   const [date, setDate]               = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory]       = useState<Category>('Office')
   const [amount, setAmount]           = useState('')
+
+  useEffect(() => {
+    supabase
+      .from('expenses')
+      .select('*')
+      .order('date', { ascending: false })
+      .then(({ data }) => {
+        setExpenses((data as Expense[]) ?? [])
+        setLoading(false)
+      })
+  }, [])
 
   const total = expenses.reduce((s, e) => s + e.amount, 0)
 
@@ -59,23 +61,26 @@ export default function ExpensesClient() {
 
   function closeModal() { setShowModal(false); resetForm() }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setExpenses(prev => [{
-      id:          Date.now(),
-      date,
-      description,
-      category,
-      amount:      parseFloat(amount),
-    }, ...prev])
+    setSaving(true)
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert({ date, description, category, amount: parseFloat(amount) })
+      .select()
+      .single()
+    if (!error && data) {
+      setExpenses(prev => [data as Expense, ...prev])
+    }
+    setSaving(false)
     closeModal()
   }
 
-  function deleteExpense(id: number) {
+  async function deleteExpense(id: number) {
+    await supabase.from('expenses').delete().eq('id', id)
     setExpenses(prev => prev.filter(e => e.id !== id))
   }
 
-  // per-category totals for the summary chips
   const byCategory = CATEGORIES.map(cat => ({
     cat,
     total: expenses.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0),
@@ -118,71 +123,74 @@ export default function ExpensesClient() {
 
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px]">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                {['Date', 'Description', 'Category', 'Amount (AZN)', ''].map(h => (
-                  <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3 last:w-14">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {expenses.map(exp => (
-                <tr key={exp.id} className="hover:bg-slate-50 transition-colors group">
-                  <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
-                    {formatDate(exp.date)}
-                  </td>
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                    {exp.description}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${CATEGORY_STYLES[exp.category]}`}>
-                      {exp.category}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 tabular-nums">
-                    {fmt(exp.amount)}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => deleteExpense(exp.id)}
-                      title="Delete expense"
-                      className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-
-            {/* Total footer */}
-            {expenses.length > 0 && (
-              <tfoot>
-                <tr className="bg-gray-50 border-t border-gray-200">
-                  <td colSpan={3} className="px-6 py-3 text-sm font-semibold text-gray-600">
-                    Total
-                  </td>
-                  <td className="px-6 py-3 text-sm font-bold text-gray-900 tabular-nums">
-                    {fmt(total)}
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-
-        {expenses.length === 0 && (
-          <div className="text-center py-16 text-gray-400 text-sm">
-            No expenses yet. Click <strong>Add Expense</strong> to record one.
+        {loading ? (
+          <div className="flex items-center justify-center py-20 text-sm text-gray-400">
+            Loading expenses…
           </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[600px]">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100">
+                    {['Date', 'Description', 'Category', 'Amount (AZN)', ''].map(h => (
+                      <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3 last:w-14">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {expenses.map(exp => (
+                    <tr key={exp.id} className="hover:bg-slate-50 transition-colors group">
+                      <td className="px-6 py-4 text-sm text-gray-500 whitespace-nowrap">
+                        {formatDate(exp.date)}
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                        {exp.description}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${CATEGORY_STYLES[exp.category]}`}>
+                          {exp.category}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 tabular-nums">
+                        {fmt(exp.amount)}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => deleteExpense(exp.id)}
+                          title="Delete expense"
+                          className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+
+                {expenses.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-gray-50 border-t border-gray-200">
+                      <td colSpan={3} className="px-6 py-3 text-sm font-semibold text-gray-600">Total</td>
+                      <td className="px-6 py-3 text-sm font-bold text-gray-900 tabular-nums">{fmt(total)}</td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+
+            {expenses.length === 0 && (
+              <div className="text-center py-16 text-gray-400 text-sm">
+                No expenses yet. Click <strong>Add Expense</strong> to record one.
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -194,7 +202,6 @@ export default function ExpensesClient() {
         >
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
 
-            {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Add Expense</h3>
@@ -210,11 +217,9 @@ export default function ExpensesClient() {
               </button>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleSubmit}>
               <div className="px-6 py-5 space-y-4">
 
-                {/* Date */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Date</label>
                   <input
@@ -226,7 +231,6 @@ export default function ExpensesClient() {
                   />
                 </div>
 
-                {/* Description */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
                   <input
@@ -239,7 +243,6 @@ export default function ExpensesClient() {
                   />
                 </div>
 
-                {/* Category */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
                   <div className="relative">
@@ -252,13 +255,11 @@ export default function ExpensesClient() {
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
                     </select>
-                    {/* chevron */}
                     <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
                       fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </div>
-                  {/* live preview badge */}
                   {category && (
                     <div className="mt-2">
                       <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${CATEGORY_STYLES[category]}`}>
@@ -268,7 +269,6 @@ export default function ExpensesClient() {
                   )}
                 </div>
 
-                {/* Amount */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Amount (AZN)</label>
                   <div className="relative">
@@ -288,7 +288,6 @@ export default function ExpensesClient() {
 
               </div>
 
-              {/* Form footer */}
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
                 <button
                   type="button"
@@ -299,9 +298,10 @@ export default function ExpensesClient() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-lg transition-colors shadow-sm"
+                  disabled={saving}
+                  className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-lg transition-colors shadow-sm disabled:opacity-60"
                 >
-                  Add Expense
+                  {saving ? 'Saving…' : 'Add Expense'}
                 </button>
               </div>
             </form>
