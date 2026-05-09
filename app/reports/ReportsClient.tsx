@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useLanguage } from '@/lib/LanguageContext'
+import type { TranslationKey } from '@/lib/i18n'
 
 type Period       = 'month' | 'quarter' | 'year' | 'custom'
 type TaxRegime    = 'simplified' | 'profit_tax' | 'income_tax'
 type BusinessType = 'general' | 'trade_food'
+type TFn          = (key: TranslationKey) => string
 
 interface Invoice { date: string; status: string; amount: number }
 interface Expense { date: string; category: string; amount: number }
@@ -66,7 +69,6 @@ function getPrev(period: Period, r: { from: string; to: string }): { from: strin
     const y = parseInt(r.from.slice(0, 4)) - 1
     return { from: `${y}-01-01`, to: `${y}-12-31` }
   }
-  // custom: same duration before current period
   const f   = new Date(r.from + 'T12:00:00').getTime()
   const t   = new Date(r.to   + 'T12:00:00').getTime()
   const dur = t - f
@@ -95,35 +97,36 @@ function calcTax(gross: number, collected: number, ts: TaxSettings | null): numb
   return Math.max(0, gross * 0.20)
 }
 
-function taxLabel(ts: TaxSettings | null): string {
-  if (!ts) return 'Income Tax'
+function taxLabel(ts: TaxSettings | null, t: TFn): string {
+  if (!ts) return t('rep.incomeTax')
   if (ts.tax_regime === 'simplified') {
     const b = ts.business_type === 'trade_food' ? 8 : 2
     const e = ts.simplified_eligible ? (b * 0.25) : b
-    return `Simplified Tax (${e}% of collected revenue)`
+    return t('rep.simplifiedTax').replace('{rate}', String(e))
   }
-  return 'Profit / Income Tax (20% of gross profit)'
+  return t('rep.profitTax')
 }
 
-function periodLabel(period: Period, from: string, to: string): string {
+function periodLabel(period: Period, from: string, to: string, lang: string): string {
+  const locale = lang === 'az' ? 'az-AZ' : 'en-GB'
   if (period === 'month') {
-    return new Date(from + 'T12:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+    return new Date(from + 'T12:00:00').toLocaleDateString(locale, { month: 'long', year: 'numeric' })
   }
   if (period === 'quarter') {
     const d = new Date(from + 'T12:00:00')
     return `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`
   }
-  if (period === 'year') return `Year ${from.slice(0, 4)}`
-  const fmt = (s: string) =>
-    new Date(s + 'T12:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-  return `${fmt(from)} – ${fmt(to)}`
+  if (period === 'year') return `${from.slice(0, 4)}`
+  const fmtDate = (s: string) =>
+    new Date(s + 'T12:00:00').toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })
+  return `${fmtDate(from)} – ${fmtDate(to)}`
 }
 
-function prevPeriodLabel(period: Period): string {
-  if (period === 'month')   return 'previous month'
-  if (period === 'quarter') return 'previous quarter'
-  if (period === 'year')    return 'previous year'
-  return 'previous period'
+function prevPeriodLabel(period: Period, t: TFn): string {
+  if (period === 'month')   return t('rep.prevMonth')
+  if (period === 'quarter') return t('rep.prevQuarter')
+  if (period === 'year')    return t('rep.prevYear')
+  return t('rep.prevPeriodNote')
 }
 
 // ── Change arrow ──────────────────────────────────────────────────────────────
@@ -192,6 +195,8 @@ function SectionHead({ label, cls }: { label: string; cls: string }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ReportsClient() {
+  const { t, lang } = useLanguage()
+
   const [period,     setPeriod]     = useState<Period>('month')
   const [customFrom, setCustomFrom] = useState(() => {
     const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`
@@ -252,8 +257,8 @@ export default function ReportsClient() {
   const net       = gross - tax
   const prevNet   = prevGross - prevTax
 
-  const pLabel = periodLabel(period, range.from, range.to)
-  const tLabel = taxLabel(taxSettings)
+  const pLabel = periodLabel(period, range.from, range.to, lang)
+  const tLabel = taxLabel(taxSettings, t)
 
   async function handleExport() {
     setExporting(true)
@@ -301,10 +306,10 @@ export default function ReportsClient() {
   }
 
   const TABS: { value: Period; label: string }[] = [
-    { value: 'month',   label: 'This Month'   },
-    { value: 'quarter', label: 'This Quarter' },
-    { value: 'year',    label: 'This Year'    },
-    { value: 'custom',  label: 'Custom'       },
+    { value: 'month',   label: t('rep.thisMonth')   },
+    { value: 'quarter', label: t('rep.thisQuarter') },
+    { value: 'year',    label: t('rep.thisYear')    },
+    { value: 'custom',  label: t('rep.custom')      },
   ]
 
   return (
@@ -313,7 +318,7 @@ export default function ReportsClient() {
       {/* ── Page header ── */}
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Profit &amp; Loss</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{t('rep.title')}</h2>
           <p className="text-gray-500 text-sm mt-1">{pLabel}</p>
         </div>
         <button
@@ -327,7 +332,7 @@ export default function ReportsClient() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
               </svg>
-              Exporting…
+              {t('rep.exporting')}
             </>
           ) : (
             <>
@@ -335,7 +340,7 @@ export default function ReportsClient() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Export PDF
+              {t('rep.exportPDF')}
             </>
           )}
         </button>
@@ -374,7 +379,7 @@ export default function ReportsClient() {
       </div>
 
       <p className="text-xs text-gray-400 mb-4 hidden md:block">
-        Gray values show {prevPeriodLabel(period)} · Arrows indicate change vs previous period
+        {t('rep.grayNote')} {prevPeriodLabel(period, t)} · {t('rep.arrowNote')}
       </p>
 
       {/* ── P&L Statement card ── */}
@@ -384,47 +389,47 @@ export default function ReportsClient() {
         <div className="bg-blue-900 px-5 py-4">
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-white font-bold text-sm tracking-wide">PROFIT &amp; LOSS STATEMENT</p>
+              <p className="text-white font-bold text-sm tracking-wide">{t('rep.statementTitle')}</p>
               {companyName && <p className="text-blue-300 text-xs mt-0.5">{companyName}</p>}
             </div>
             <div className="text-right hidden md:block">
               <p className="text-blue-200 text-xs font-medium">{pLabel}</p>
               <div className="flex items-center justify-end mt-1.5 text-xs">
-                <span className="text-blue-400 w-28 text-right">Prev. period</span>
-                <span className="text-blue-400 w-16 text-right">Change</span>
-                <span className="text-blue-200 font-semibold w-32 text-right">Current</span>
+                <span className="text-blue-400 w-28 text-right">{t('rep.prevPeriod')}</span>
+                <span className="text-blue-400 w-16 text-right">{t('rep.change')}</span>
+                <span className="text-blue-200 font-semibold w-32 text-right">{t('rep.current')}</span>
               </div>
             </div>
           </div>
         </div>
 
         {/* REVENUE */}
-        <SectionHead label="Revenue" cls="bg-blue-50 border-blue-100 text-blue-700" />
-        <PLRow label="Total Invoiced"    curr={totalInvoiced}     prev={prevTotalInvoiced} indent />
-        <PLRow label="Collected (Paid)"  curr={collected}         prev={prevCollected}     indent />
-        <PLRow label="Outstanding"       curr={outstanding}       prev={prevOutstanding}   indent />
+        <SectionHead label={t('rep.revenue')} cls="bg-blue-50 border-blue-100 text-blue-700" />
+        <PLRow label={t('rep.totalInvoiced')}   curr={totalInvoiced}     prev={prevTotalInvoiced} indent />
+        <PLRow label={t('rep.collected')}        curr={collected}         prev={prevCollected}     indent />
+        <PLRow label={t('rep.outstanding')}      curr={outstanding}       prev={prevOutstanding}   indent />
 
         {/* EXPENSES */}
-        <SectionHead label="Expenses" cls="bg-red-50 border-red-100 text-red-700" />
+        <SectionHead label={t('rep.expenses')} cls="bg-red-50 border-red-100 text-red-700" />
         {catRows.length === 0 && (
-          <p className="text-sm text-gray-400 italic px-5 py-3">No expenses recorded in this period.</p>
+          <p className="text-sm text-gray-400 italic px-5 py-3">{t('rep.noExpenses')}</p>
         )}
         {catRows.map(r => (
           <PLRow key={r.cat} label={r.cat} curr={r.curr} prev={r.prev} indent invert />
         ))}
-        <PLRow label="Total Expenses" curr={totalExp} prev={prevTotalExp} bold invert />
+        <PLRow label={t('rep.totalExpenses')} curr={totalExp} prev={prevTotalExp} bold invert />
 
         {/* PROFIT */}
-        <SectionHead label="Profit" cls="bg-green-50 border-green-100 text-green-700" />
+        <SectionHead label={t('rep.profit')} cls="bg-green-50 border-green-100 text-green-700" />
         <PLRow
-          label="Gross Profit (Collected − Expenses)"
+          label={t('rep.grossProfit')}
           curr={gross} prev={prevGross}
           indent
           highlight={gross >= 0 ? 'green' : 'red'}
         />
         <PLRow label={tLabel} curr={tax} prev={prevTax} indent invert />
         <PLRow
-          label="Net Profit After Tax"
+          label={t('rep.netProfit')}
           curr={net} prev={prevNet}
           bold
           highlight={net >= 0 ? 'green' : 'red'}
@@ -432,8 +437,8 @@ export default function ReportsClient() {
 
         {/* Card footer */}
         <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-          <span>Generated by AzFinance</span>
-          <span>{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+          <span>{t('rep.generatedBy')}</span>
+          <span>{new Date().toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
         </div>
       </div>
 

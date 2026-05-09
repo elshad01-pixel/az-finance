@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
 import { useEffect } from 'react'
+import { useLanguage } from '@/lib/LanguageContext'
+import type { TranslationKey } from '@/lib/i18n'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ interface LineItem {
   unitPrice:   string
 }
 
-interface MenuState { id: number; top: number; right: number }
+interface MenuState    { id: number; top: number; right: number }
 interface ConfirmState { type: 'finalize' | 'delete'; invoice: Invoice }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -58,7 +60,7 @@ function fmt(n: number) {
   return `₼ ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-// ── Small reusable dropdown item ───────────────────────────────────────────
+// ── Dropdown item ──────────────────────────────────────────────────────────
 
 function MenuItem({
   onClick, children, variant = 'default',
@@ -86,7 +88,9 @@ function MenuItem({
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function InvoicesClient() {
-  // ── Data ─────────────────────────────────────────────────────────────
+  const { t } = useLanguage()
+
+  // ── Data ──────────────────────────────────────────────────────────────
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading]   = useState(true)
 
@@ -96,19 +100,19 @@ export default function InvoicesClient() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
 
   // ── Form modal ────────────────────────────────────────────────────────
-  const [showModal, setShowModal]         = useState(false)
+  const [showModal, setShowModal]           = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
-  const [clientName, setClientName]       = useState('')
-  const [invoiceDate, setInvoiceDate]     = useState('')
-  const [dueDate, setDueDate]             = useState('')
-  const [lineItems, setLineItems]         = useState<LineItem[]>([EMPTY_LINE()])
-  const [saving, setSaving]               = useState(false)
+  const [clientName, setClientName]         = useState('')
+  const [invoiceDate, setInvoiceDate]       = useState('')
+  const [dueDate, setDueDate]               = useState('')
+  const [lineItems, setLineItems]           = useState<LineItem[]>([EMPTY_LINE()])
+  const [saving, setSaving]                 = useState(false)
 
-  // ── Actions menu (portal-rendered to avoid overflow clipping) ─────────
-  const [menu, setMenu]   = useState<MenuState | null>(null)
+  // ── Actions menu ──────────────────────────────────────────────────────
+  const [menu, setMenu] = useState<MenuState | null>(null)
 
   // ── Confirmation dialog ───────────────────────────────────────────────
-  const [confirm, setConfirm]     = useState<ConfirmState | null>(null)
+  const [confirm, setConfirm]       = useState<ConfirmState | null>(null)
   const [confirming, setConfirming] = useState(false)
 
   // ── PDF download ──────────────────────────────────────────────────────
@@ -141,7 +145,16 @@ export default function InvoicesClient() {
     Draft:  invoices.filter(i => i.status === 'Draft').length,
   }
 
-  // ── Form helpers ──────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────
+  function tabLabel(tab: FilterTab): string {
+    if (tab === 'All') return t('common.all')
+    return t(`status.${tab}` as TranslationKey)
+  }
+
+  function statusLabel(s: Status): string {
+    return t(`status.${s}` as TranslationKey)
+  }
+
   function updateLine(id: number, field: keyof Omit<LineItem, 'id'>, val: string) {
     setLineItems(prev => prev.map(l => l.id === id ? { ...l, [field]: val } : l))
   }
@@ -171,30 +184,19 @@ export default function InvoicesClient() {
     setLineItems(
       inv.line_items?.length
         ? inv.line_items.map((li, i) => ({
-            id:          Date.now() + i,
-            description: li.description,
-            quantity:    String(li.quantity),
-            unitPrice:   String(li.unit_price),
+            id: Date.now() + i, description: li.description,
+            quantity: String(li.quantity), unitPrice: String(li.unit_price),
           }))
         : [{ id: Date.now(), description: 'Professional Services', quantity: '1', unitPrice: String(inv.amount) }],
     )
     setShowModal(true)
   }
 
-  function handleFinalize(inv: Invoice) {
-    setMenu(null)
-    setConfirm({ type: 'finalize', invoice: inv })
-  }
+  function handleFinalize(inv: Invoice) { setMenu(null); setConfirm({ type: 'finalize', invoice: inv }) }
 
-  async function handleMarkAsPaid(inv: Invoice) {
-    setMenu(null)
-    await updateStatus(inv.id, 'Paid')
-  }
+  async function handleMarkAsPaid(inv: Invoice) { setMenu(null); await updateStatus(inv.id, 'Paid') }
 
-  function handleDelete(inv: Invoice) {
-    setMenu(null)
-    setConfirm({ type: 'delete', invoice: inv })
-  }
+  function handleDelete(inv: Invoice) { setMenu(null); setConfirm({ type: 'delete', invoice: inv }) }
 
   async function handleDownloadPDF(inv: Invoice) {
     setMenu(null)
@@ -270,20 +272,16 @@ export default function InvoicesClient() {
       const { data, error } = await supabase
         .from('invoices')
         .update({ client: clientName, date: invoiceDate, due_date: dueDate, amount: total, line_items: storedItems })
-        .eq('id', editingInvoice.id)
-        .select()
-        .single()
+        .eq('id', editingInvoice.id).select().single()
       if (!error && data) setInvoices(prev => prev.map(i => i.id === editingInvoice.id ? data as Invoice : i))
     } else {
       const number = `INV-${1000 + invoices.length + 1}`
       const { data, error } = await supabase
         .from('invoices')
         .insert({ number, client: clientName, date: invoiceDate, due_date: dueDate, amount: total, status: 'Draft', line_items: storedItems })
-        .select()
-        .single()
+        .select().single()
       if (!error && data) setInvoices(prev => [data as Invoice, ...prev])
     }
-
     setSaving(false)
     closeModal()
   }
@@ -292,15 +290,15 @@ export default function InvoicesClient() {
   return (
     <div>
 
-      {/* ── Page header ──────────────────────────────────────────────── */}
+      {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Invoices</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{t('page.invoices')}</h2>
           <p className="text-gray-500 text-sm mt-1">
-            {counts.All} total &mdash;{' '}
-            <span className="text-green-600 font-medium">{counts.Paid} paid</span>,{' '}
-            <span className="text-red-500 font-medium">{counts.Unpaid} unpaid</span>,{' '}
-            <span className="text-gray-400 font-medium">{counts.Draft} draft</span>
+            {counts.All} {t('common.total')} &mdash;{' '}
+            <span className="text-green-600 font-medium">{counts.Paid} {t('inv.paid')}</span>,{' '}
+            <span className="text-red-500 font-medium">{counts.Unpaid} {t('inv.unpaid')}</span>,{' '}
+            <span className="text-gray-400 font-medium">{counts.Draft} {t('inv.draft')}</span>
           </p>
         </div>
         <button
@@ -310,11 +308,11 @@ export default function InvoicesClient() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          New Invoice
+          {t('inv.newInvoice')}
         </button>
       </div>
 
-      {/* ── Search + filter bar ───────────────────────────────────────── */}
+      {/* Search + filter */}
       <div className="mb-4 flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1 max-w-sm">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
@@ -324,7 +322,7 @@ export default function InvoicesClient() {
           </svg>
           <input
             type="text"
-            placeholder="Search by client name…"
+            placeholder={t('inv.searchPlaceholder')}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full border border-gray-200 bg-white rounded-lg pl-9 pr-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm transition"
@@ -339,7 +337,7 @@ export default function InvoicesClient() {
                 activeFilter === tab ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
               }`}
             >
-              {tab}
+              {tabLabel(tab)}
               <span className={`ml-1.5 text-xs ${activeFilter === tab ? 'opacity-75' : 'opacity-50'}`}>
                 {counts[tab]}
               </span>
@@ -348,17 +346,19 @@ export default function InvoicesClient() {
         </div>
       </div>
 
-      {/* ── Table ────────────────────────────────────────────────────── */}
+      {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-sm text-gray-400">Loading invoices…</div>
+          <div className="flex items-center justify-center py-20 text-sm text-gray-400">
+            {t('inv.loadingInvoices')}
+          </div>
         ) : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[700px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    {['Invoice #', 'Client Name', 'Date', 'Due Date', 'Amount (AZN)', 'Status', ''].map(h => (
+                    {[t('inv.number'), t('inv.clientName'), t('common.date'), t('inv.dueDate'), t('inv.amountAZN'), t('common.status'), ''].map(h => (
                       <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3.5 last:w-12 last:px-3">
                         {h}
                       </th>
@@ -379,11 +379,9 @@ export default function InvoicesClient() {
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900 tabular-nums">{fmt(inv.amount)}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center text-xs font-semibold px-3 py-1 rounded-full ${STATUS_STYLES[inv.status]}`}>
-                          {inv.status}
+                          {statusLabel(inv.status)}
                         </span>
                       </td>
-
-                      {/* ── Actions button ──────────────────────────── */}
                       <td className="px-3 py-4" onClick={e => e.stopPropagation()}>
                         <button
                           onClick={e => openMenu(e, inv.id)}
@@ -411,20 +409,20 @@ export default function InvoicesClient() {
             {filtered.length === 0 && (
               <div className="text-center py-16 text-gray-400 text-sm">
                 {search || activeFilter !== 'All'
-                  ? 'No invoices match your search or filter.'
-                  : <>No invoices yet. Click <strong>New Invoice</strong> to create one.</>}
+                  ? t('inv.noMatch')
+                  : t('inv.noInvoices')}
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* ── Invoice detail modal ─────────────────────────────────────── */}
+      {/* Invoice detail modal */}
       {selectedInvoice && (
         <InvoiceDetailModal invoice={selectedInvoice} onClose={() => setSelectedInvoice(null)} />
       )}
 
-      {/* ── New / Edit invoice modal ─────────────────────────────────── */}
+      {/* New / Edit modal */}
       {showModal && (
         <div
           className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-10 px-4"
@@ -435,10 +433,10 @@ export default function InvoicesClient() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
-                  {editingInvoice ? `Edit Invoice — ${editingInvoice.number}` : 'New Invoice'}
+                  {editingInvoice ? `${t('inv.editInvoice')} — ${editingInvoice.number}` : t('inv.newInvoice')}
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {editingInvoice ? 'Update the draft invoice details below.' : 'Fill in the details below'}
+                  {editingInvoice ? t('inv.updateDraftMsg') : t('inv.fillDetails')}
                 </p>
               </div>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
@@ -452,10 +450,9 @@ export default function InvoicesClient() {
               <div className="px-6 py-5 space-y-5">
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Client Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('inv.clientName')}</label>
                   <input
-                    type="text" required
-                    value={clientName}
+                    type="text" required value={clientName}
                     onChange={e => setClientName(e.target.value)}
                     placeholder="e.g. Baku Tech LLC"
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
@@ -464,69 +461,49 @@ export default function InvoicesClient() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Invoice Date</label>
-                    <input
-                      type="date" required
-                      value={invoiceDate}
-                      onChange={e => setInvoiceDate(e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    />
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('inv.invoiceDate')}</label>
+                    <input type="date" required value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Due Date</label>
-                    <input
-                      type="date" required
-                      value={dueDate}
-                      onChange={e => setDueDate(e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    />
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('inv.dueDate')}</label>
+                    <input type="date" required value={dueDate} onChange={e => setDueDate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Line Items</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('inv.lineItems')}</label>
                   <div className="border border-gray-200 rounded-lg overflow-hidden">
                     <div className="grid grid-cols-[1fr_72px_104px_88px_32px] bg-gray-50 border-b border-gray-200">
-                      {['Description', 'Qty', 'Unit Price', 'Total', ''].map(h => (
+                      {[t('common.description'), t('common.quantity'), t('common.unitPrice'), t('common.total'), ''].map(h => (
                         <div key={h} className="text-xs font-semibold text-gray-500 px-3 py-2">{h}</div>
                       ))}
                     </div>
-
                     <div className="divide-y divide-gray-100">
                       {lineItems.map(item => {
                         const lineTotal = (parseFloat(item.quantity) || 0) * (parseFloat(item.unitPrice) || 0)
                         return (
                           <div key={item.id} className="grid grid-cols-[1fr_72px_104px_88px_32px] items-center hover:bg-gray-50">
-                            <input
-                              type="text" required
-                              value={item.description}
+                            <input type="text" required value={item.description}
                               onChange={e => updateLine(item.id, 'description', e.target.value)}
-                              placeholder="Description"
-                              className="px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none bg-transparent w-full"
-                            />
-                            <input
-                              type="number" required min="0.01" step="any"
-                              value={item.quantity}
+                              placeholder={t('common.description')}
+                              className="px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none bg-transparent w-full" />
+                            <input type="number" required min="0.01" step="any" value={item.quantity}
                               onChange={e => updateLine(item.id, 'quantity', e.target.value)}
-                              className="px-3 py-2.5 text-sm text-gray-900 focus:outline-none bg-transparent w-full"
-                            />
-                            <input
-                              type="number" required min="0" step="0.01"
-                              value={item.unitPrice}
+                              className="px-3 py-2.5 text-sm text-gray-900 focus:outline-none bg-transparent w-full" />
+                            <input type="number" required min="0" step="0.01" value={item.unitPrice}
                               onChange={e => updateLine(item.id, 'unitPrice', e.target.value)}
                               placeholder="0.00"
-                              className="px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none bg-transparent w-full"
-                            />
+                              className="px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none bg-transparent w-full" />
                             <div className="px-3 py-2.5 text-sm font-medium text-gray-700 tabular-nums">
                               ₼&nbsp;{lineTotal.toFixed(2)}
                             </div>
                             <div className="flex items-center justify-center pr-2">
                               {lineItems.length > 1 && (
-                                <button
-                                  type="button"
+                                <button type="button"
                                   onClick={() => setLineItems(prev => prev.filter(l => l.id !== item.id))}
-                                  className="text-gray-300 hover:text-red-400 transition-colors p-0.5 rounded"
-                                >
+                                  className="text-gray-300 hover:text-red-400 transition-colors p-0.5 rounded">
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                                       d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -538,20 +515,17 @@ export default function InvoicesClient() {
                         )
                       })}
                     </div>
-
                     <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-3 py-2.5">
-                      <button
-                        type="button"
+                      <button type="button"
                         onClick={() => setLineItems(prev => [...prev, EMPTY_LINE()])}
-                        className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
-                      >
+                        className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors">
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                         </svg>
-                        Add line item
+                        {t('inv.addLineItem')}
                       </button>
                       <div className="text-sm text-gray-700">
-                        Total: <span className="font-bold text-blue-700 tabular-nums">₼&nbsp;{total.toFixed(2)}</span>
+                        {t('common.total')}: <span className="font-bold text-blue-700 tabular-nums">₼&nbsp;{total.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
@@ -560,17 +534,13 @@ export default function InvoicesClient() {
               </div>
 
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
-                <button
-                  type="button" onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors"
-                >
-                  Cancel
+                <button type="button" onClick={closeModal}
+                  className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors">
+                  {t('common.cancel')}
                 </button>
-                <button
-                  type="submit" disabled={saving}
-                  className="px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors shadow-sm disabled:opacity-60"
-                >
-                  {saving ? 'Saving…' : editingInvoice ? 'Save Changes' : 'Create Invoice'}
+                <button type="submit" disabled={saving}
+                  className="px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors shadow-sm disabled:opacity-60">
+                  {saving ? t('common.saving') : editingInvoice ? t('common.saveChanges') : t('inv.createInvoice')}
                 </button>
               </div>
             </form>
@@ -579,15 +549,12 @@ export default function InvoicesClient() {
         </div>
       )}
 
-      {/* ── Actions dropdown (portal — escapes overflow:hidden) ───────── */}
+      {/* Actions dropdown (portal) */}
       {menu && typeof window !== 'undefined' && createPortal(
         <>
-          {/* Backdrop closes menu */}
           <div className="fixed inset-0 z-40" onClick={() => setMenu(null)} />
-
-          {/* Dropdown */}
           <div
-            className="fixed z-50 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 w-48 overflow-hidden"
+            className="fixed z-50 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 w-52 overflow-hidden"
             style={{ top: menu.top, right: menu.right }}
           >
             {(() => {
@@ -602,14 +569,14 @@ export default function InvoicesClient() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
-                        Edit
+                        {t('common.edit')}
                       </MenuItem>
                       <MenuItem onClick={() => handleFinalize(inv)} variant="primary">
                         <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        Finalize
+                        {t('inv.finalize')}
                       </MenuItem>
                       <div className="my-1 border-t border-gray-100" />
                       <MenuItem onClick={() => handleDelete(inv)} variant="danger">
@@ -617,11 +584,10 @@ export default function InvoicesClient() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        Delete
+                        {t('common.delete')}
                       </MenuItem>
                     </>
                   )}
-
                   {inv.status === 'Unpaid' && (
                     <>
                       <MenuItem onClick={() => handleMarkAsPaid(inv)} variant="success">
@@ -629,14 +595,14 @@ export default function InvoicesClient() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        Mark as Paid
+                        {t('inv.markAsPaid')}
                       </MenuItem>
                       <MenuItem onClick={() => handleDownloadPDF(inv)}>
                         <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
-                        Download PDF
+                        {t('inv.downloadPDF')}
                       </MenuItem>
                       <div className="my-1 border-t border-gray-100" />
                       <MenuItem onClick={() => handleDelete(inv)} variant="danger">
@@ -644,11 +610,10 @@ export default function InvoicesClient() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        Delete
+                        {t('common.delete')}
                       </MenuItem>
                     </>
                   )}
-
                   {inv.status === 'Paid' && (
                     <>
                       <MenuItem onClick={() => handleDownloadPDF(inv)}>
@@ -656,7 +621,7 @@ export default function InvoicesClient() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
-                        Download PDF
+                        {t('inv.downloadPDF')}
                       </MenuItem>
                       <MenuItem onClick={() => { setMenu(null); setSelectedInvoice(inv) }}>
                         <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -665,7 +630,7 @@ export default function InvoicesClient() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                             d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
-                        View
+                        {t('common.view')}
                       </MenuItem>
                     </>
                   )}
@@ -677,7 +642,7 @@ export default function InvoicesClient() {
         document.body,
       )}
 
-      {/* ── Confirmation dialog ───────────────────────────────────────── */}
+      {/* Confirmation dialog */}
       {confirm && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
@@ -699,32 +664,24 @@ export default function InvoicesClient() {
             </div>
 
             <h3 className="text-lg font-bold text-gray-900">
-              {confirm.type === 'delete' ? 'Delete Invoice?' : 'Finalize Invoice?'}
+              {confirm.type === 'delete' ? t('inv.deleteTitle') : t('inv.finalizeTitle')}
             </h3>
             <p className="text-sm text-gray-500 mt-1.5">
               {confirm.type === 'delete'
-                ? `Invoice ${confirm.invoice.number} will be permanently deleted. This cannot be undone.`
-                : `Invoice ${confirm.invoice.number} will be marked as Unpaid. It can no longer be edited after this.`}
+                ? t('inv.deleteMsg').replace('{number}', confirm.invoice.number)
+                : t('inv.finalizeMsg').replace('{number}', confirm.invoice.number)}
             </p>
 
             <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setConfirm(null)}
-                disabled={confirming}
-                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-60"
-              >
-                Cancel
+              <button onClick={() => setConfirm(null)} disabled={confirming}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-60">
+                {t('common.cancel')}
               </button>
-              <button
-                onClick={handleConfirm}
-                disabled={confirming}
+              <button onClick={handleConfirm} disabled={confirming}
                 className={`flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-60 ${
-                  confirm.type === 'delete'
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                {confirming ? 'Processing…' : confirm.type === 'delete' ? 'Delete' : 'Finalize'}
+                  confirm.type === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                }`}>
+                {confirming ? t('common.processing') : confirm.type === 'delete' ? t('common.delete') : t('inv.finalize')}
               </button>
             </div>
 

@@ -3,20 +3,28 @@
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { useLanguage } from '@/lib/LanguageContext'
+import type { TranslationKey } from '@/lib/i18n'
 import type { User } from '@supabase/supabase-js'
 
-const PAGE_TITLES: Record<string, string> = {
-  '/':         'Dashboard Overview',
-  '/invoices': 'Invoices',
-  '/expenses': 'Expenses',
-  '/clients':  'Clients',
-  '/reports':  'Reports',
+const PATH_TITLE: Record<string, TranslationKey> = {
+  '/':                  'page.dashboard',
+  '/invoices':          'page.invoices',
+  '/expenses':          'page.expenses',
+  '/clients':           'page.clients',
+  '/reports':           'page.reports',
+  '/tax-settings':      'page.taxSettings',
+  '/company-settings':  'page.companySettings',
 }
 
 export default function Header() {
   const pathname = usePathname()
   const router   = useRouter()
-  const title    = PAGE_TITLES[pathname] ?? 'AzFinance'
+  const { lang, setLang, t } = useLanguage()
+
+  const titleKey = PATH_TITLE[pathname]
+  const title    = titleKey ? t(titleKey) : 'AzFinance'
+
   const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
@@ -33,17 +41,39 @@ export default function Header() {
     router.refresh()
   }
 
-  const initials = user?.email?.[0].toUpperCase() ?? 'U'
+  const now = new Date()
+  const monthYear = now.toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { month: 'long', year: 'numeric' })
+
+  const initials   = user?.email?.[0].toUpperCase() ?? 'U'
   const displayName = user?.email?.split('@')[0] ?? 'User'
 
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm px-6 py-4 flex items-center justify-between shrink-0">
       <div>
         <h1 className="text-lg font-semibold text-gray-800">{title}</h1>
-        <p className="text-xs text-gray-400 mt-0.5">May 2026</p>
+        <p className="text-xs text-gray-400 mt-0.5 capitalize">{monthYear}</p>
       </div>
 
       <div className="flex items-center gap-3">
+
+        {/* ── Language toggle ── */}
+        <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+          {(['az', 'en'] as const).map(l => (
+            <button
+              key={l}
+              onClick={() => setLang(l)}
+              className={`px-2.5 py-1.5 text-xs font-bold transition-colors ${
+                lang === l
+                  ? 'bg-blue-700 text-white'
+                  : 'bg-white text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {l.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Notification bell ── */}
         <button className="relative text-gray-500 hover:text-gray-700 transition-colors">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -52,6 +82,7 @@ export default function Header() {
           <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full" />
         </button>
 
+        {/* ── User avatar ── */}
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-blue-700 flex items-center justify-center text-white text-sm font-semibold shrink-0">
             {initials}
@@ -59,16 +90,17 @@ export default function Header() {
           <span className="text-sm font-medium text-gray-700 hidden sm:block">{displayName}</span>
         </div>
 
+        {/* ── Sign out ── */}
         <button
           onClick={handleLogout}
-          title="Sign out"
+          title={t('header.signOut')}
           className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg border border-gray-200 hover:border-red-200 transition-colors"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
-          Sign out
+          {t('header.signOut')}
         </button>
       </div>
     </header>

@@ -2,10 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useLanguage } from "@/lib/LanguageContext";
+import type { TranslationKey } from "@/lib/i18n";
 
-const navItems = [
+interface NavItem {
+  labelKey: TranslationKey
+  href:     string
+  icon:     React.ReactNode
+}
+
+const navItems: NavItem[] = [
   {
-    label: "Dashboard",
+    labelKey: 'nav.dashboard',
     href: "/",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -15,7 +23,7 @@ const navItems = [
     ),
   },
   {
-    label: "Invoices",
+    labelKey: 'nav.invoices',
     href: "/invoices",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -25,7 +33,7 @@ const navItems = [
     ),
   },
   {
-    label: "Expenses",
+    labelKey: 'nav.expenses',
     href: "/expenses",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -35,7 +43,7 @@ const navItems = [
     ),
   },
   {
-    label: "Clients",
+    labelKey: 'nav.clients',
     href: "/clients",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -45,7 +53,7 @@ const navItems = [
     ),
   },
   {
-    label: "Reports",
+    labelKey: 'nav.reports',
     href: "/reports",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -55,7 +63,7 @@ const navItems = [
     ),
   },
   {
-    label: "Tax Settings",
+    labelKey: 'nav.taxSettings',
     href: "/tax-settings",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -65,7 +73,7 @@ const navItems = [
     ),
   },
   {
-    label: "Company Settings",
+    labelKey: 'nav.companySettings',
     href: "/company-settings",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,6 +86,7 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { t }    = useLanguage();
 
   return (
     <aside className="w-72 bg-blue-900 text-white flex flex-col shrink-0 h-full border-r border-blue-800">
@@ -102,7 +111,7 @@ export default function Sidebar() {
               }`}
             >
               {item.icon}
-              {item.label}
+              {t(item.labelKey)}
             </Link>
           );
         })}

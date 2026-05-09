@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useLanguage } from '@/lib/LanguageContext'
 
 interface Client {
   id: number
@@ -34,6 +35,8 @@ function getTotals(company: string, invoices: InvoiceSummary[]) {
 }
 
 export default function ClientsClient() {
+  const { t, lang } = useLanguage()
+
   const [clients, setClients]     = useState<Client[]>([])
   const [invoices, setInvoices]   = useState<InvoiceSummary[]>([])
   const [loading, setLoading]     = useState(true)
@@ -109,20 +112,22 @@ export default function ClientsClient() {
   const totalInvoiced    = allTotals.reduce((s, c) => s + c.totalInvoiced, 0)
   const totalOutstanding = allTotals.reduce((s, c) => s + c.outstanding, 0)
 
+  const clientWord = lang === 'az' ? 'müştəri' : clients.length !== 1 ? 'clients' : 'client'
+
   return (
     <div>
 
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Clients</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{t('nav.clients')}</h2>
           <p className="text-gray-500 text-sm mt-1">
-            {clients.length} client{clients.length !== 1 ? 's' : ''} &mdash;{' '}
-            <span className="font-semibold text-gray-700">{fmt(totalInvoiced)}</span> invoiced,{' '}
+            {clients.length} {clientWord} &mdash;{' '}
+            <span className="font-semibold text-gray-700">{fmt(totalInvoiced)}</span> {t('cli.invoiced')},{' '}
             <span className={`font-semibold ${totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
               {fmt(totalOutstanding)}
             </span>{' '}
-            outstanding
+            {t('cli.outstanding').toLowerCase()}
           </p>
         </div>
         <button
@@ -132,7 +137,7 @@ export default function ClientsClient() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Add Client
+          {t('cli.addClient')}
         </button>
       </div>
 
@@ -140,7 +145,7 @@ export default function ClientsClient() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-20 text-sm text-gray-400">
-            Loading clients…
+            {t('cli.loading')}
           </div>
         ) : (
           <>
@@ -148,7 +153,7 @@ export default function ClientsClient() {
               <table className="w-full min-w-[780px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    {['Client Name', 'Email', 'Phone', 'Total Invoiced', 'Outstanding', ''].map(h => (
+                    {[t('cli.companyName'), t('cli.email'), t('cli.phone'), t('cli.totalInvoiced'), t('cli.outstanding'), ''].map(h => (
                       <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3 last:w-20">
                         {h}
                       </th>
@@ -190,7 +195,7 @@ export default function ClientsClient() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                               d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
-                          Edit
+                          {t('common.edit')}
                         </button>
                       </td>
                     </tr>
@@ -200,7 +205,7 @@ export default function ClientsClient() {
                 {clients.length > 0 && (
                   <tfoot>
                     <tr className="bg-gray-50 border-t border-gray-200">
-                      <td colSpan={3} className="px-6 py-3 text-sm font-semibold text-gray-600">Total</td>
+                      <td colSpan={3} className="px-6 py-3 text-sm font-semibold text-gray-600">{t('common.total')}</td>
                       <td className="px-6 py-3 text-sm font-bold text-gray-900 tabular-nums">{fmt(totalInvoiced)}</td>
                       <td className={`px-6 py-3 text-sm font-bold tabular-nums ${totalOutstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
                         {fmt(totalOutstanding)}
@@ -214,7 +219,7 @@ export default function ClientsClient() {
 
             {clients.length === 0 && (
               <div className="text-center py-16 text-gray-400 text-sm">
-                No clients yet. Click <strong>Add Client</strong> to create one.
+                {t('cli.noClients')}
               </div>
             )}
           </>
@@ -232,10 +237,10 @@ export default function ClientsClient() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
-                  {isEditing ? 'Edit Client' : 'Add Client'}
+                  {isEditing ? t('cli.editClient') : t('cli.addClient')}
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {isEditing ? 'Update the client details below' : 'Fill in the client details below'}
+                  {isEditing ? t('cli.updateDetails') : t('cli.fillDetails')}
                 </p>
               </div>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100">
@@ -249,7 +254,7 @@ export default function ClientsClient() {
               <div className="px-6 py-5 space-y-4">
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Company Name</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('cli.companyName')}</label>
                   <input
                     type="text"
                     required
@@ -261,7 +266,7 @@ export default function ClientsClient() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Contact Person</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('cli.contactPerson')}</label>
                   <input
                     type="text"
                     required
@@ -274,7 +279,7 @@ export default function ClientsClient() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('cli.email')}</label>
                     <input
                       type="email"
                       required
@@ -285,7 +290,7 @@ export default function ClientsClient() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Phone</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('cli.phone')}</label>
                     <input
                       type="tel"
                       required
@@ -298,7 +303,7 @@ export default function ClientsClient() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Address</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('cli.address')}</label>
                   <textarea
                     value={form.address}
                     onChange={setField('address')}
@@ -316,14 +321,14 @@ export default function ClientsClient() {
                   onClick={closeModal}
                   className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
                   className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-lg transition-colors shadow-sm disabled:opacity-60"
                 >
-                  {saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Add Client'}
+                  {saving ? t('common.saving') : isEditing ? t('common.saveChanges') : t('cli.addClient')}
                 </button>
               </div>
             </form>

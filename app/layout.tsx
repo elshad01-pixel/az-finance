@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "@/app/ui/LayoutWrapper";
+import { LanguageProvider } from "@/lib/LanguageContext";
 
 const geist = Geist({
   variable: "--font-geist-sans",
@@ -21,7 +22,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geist.variable} h-screen overflow-hidden antialiased`}>
       <body className="h-full flex bg-gray-50">
-        <LayoutWrapper>{children}</LayoutWrapper>
+        <LanguageProvider>
+          <LayoutWrapper>{children}</LayoutWrapper>
+        </LanguageProvider>
       </body>
     </html>
   );

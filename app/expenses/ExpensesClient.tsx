@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useLanguage } from '@/lib/LanguageContext'
 
 type Category = 'Office' | 'Utilities' | 'Salaries' | 'Transport' | 'Other'
 
@@ -23,15 +24,13 @@ const CATEGORY_STYLES: Record<Category, string> = {
   Other:     'bg-gray-100   text-gray-600',
 }
 
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
 function fmt(n: number) {
   return `₼ ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 export default function ExpensesClient() {
+  const { t, lang } = useLanguage()
+
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [loading, setLoading]   = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -54,6 +53,10 @@ export default function ExpensesClient() {
   }, [])
 
   const total = expenses.reduce((s, e) => s + e.amount, 0)
+
+  function formatDate(d: string) {
+    return new Date(d).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  }
 
   function resetForm() {
     setDate(''); setDescription(''); setCategory('Office'); setAmount('')
@@ -86,15 +89,17 @@ export default function ExpensesClient() {
     total: expenses.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0),
   })).filter(x => x.total > 0)
 
+  const recordWord = lang === 'az' ? 'qeyd' : expenses.length !== 1 ? 'records' : 'record'
+
   return (
     <div>
 
       {/* Page header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Expenses</h2>
+          <h2 className="text-2xl font-bold text-gray-900">{t('nav.expenses')}</h2>
           <p className="text-gray-500 text-sm mt-1">
-            {expenses.length} record{expenses.length !== 1 ? 's' : ''} &mdash; total{' '}
+            {expenses.length} {recordWord} &mdash; {t('common.total')}{' '}
             <span className="font-semibold text-gray-700">{fmt(total)}</span>
           </p>
         </div>
@@ -105,7 +110,7 @@ export default function ExpensesClient() {
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-          Add Expense
+          {t('exp.addExpense')}
         </button>
       </div>
 
@@ -125,7 +130,7 @@ export default function ExpensesClient() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-20 text-sm text-gray-400">
-            Loading expenses…
+            {t('exp.loading')}
           </div>
         ) : (
           <>
@@ -133,7 +138,7 @@ export default function ExpensesClient() {
               <table className="w-full min-w-[600px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    {['Date', 'Description', 'Category', 'Amount (AZN)', ''].map(h => (
+                    {[t('common.date'), t('common.description'), t('exp.category'), t('exp.amountAZN'), ''].map(h => (
                       <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3 last:w-14">
                         {h}
                       </th>
@@ -160,7 +165,7 @@ export default function ExpensesClient() {
                       <td className="px-6 py-4 text-right">
                         <button
                           onClick={() => deleteExpense(exp.id)}
-                          title="Delete expense"
+                          title={t('common.delete')}
                           className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -176,7 +181,7 @@ export default function ExpensesClient() {
                 {expenses.length > 0 && (
                   <tfoot>
                     <tr className="bg-gray-50 border-t border-gray-200">
-                      <td colSpan={3} className="px-6 py-3 text-sm font-semibold text-gray-600">Total</td>
+                      <td colSpan={3} className="px-6 py-3 text-sm font-semibold text-gray-600">{t('common.total')}</td>
                       <td className="px-6 py-3 text-sm font-bold text-gray-900 tabular-nums">{fmt(total)}</td>
                       <td />
                     </tr>
@@ -187,7 +192,7 @@ export default function ExpensesClient() {
 
             {expenses.length === 0 && (
               <div className="text-center py-16 text-gray-400 text-sm">
-                No expenses yet. Click <strong>Add Expense</strong> to record one.
+                {t('exp.noExpenses')}
               </div>
             )}
           </>
@@ -204,8 +209,8 @@ export default function ExpensesClient() {
 
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Add Expense</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Fill in the expense details</p>
+                <h3 className="text-lg font-semibold text-gray-900">{t('exp.addExpense')}</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{t('exp.fillDetails')}</p>
               </div>
               <button
                 onClick={closeModal}
@@ -221,7 +226,7 @@ export default function ExpensesClient() {
               <div className="px-6 py-5 space-y-4">
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Date</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('common.date')}</label>
                   <input
                     type="date"
                     required
@@ -232,7 +237,7 @@ export default function ExpensesClient() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Description</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('common.description')}</label>
                   <input
                     type="text"
                     required
@@ -244,7 +249,7 @@ export default function ExpensesClient() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.category')}</label>
                   <div className="relative">
                     <select
                       value={category}
@@ -270,7 +275,7 @@ export default function ExpensesClient() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Amount (AZN)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.amountAZN')}</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium select-none">₼</span>
                     <input
@@ -294,14 +299,14 @@ export default function ExpensesClient() {
                   onClick={closeModal}
                   className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
                   className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 active:bg-green-800 rounded-lg transition-colors shadow-sm disabled:opacity-60"
                 >
-                  {saving ? 'Saving…' : 'Add Expense'}
+                  {saving ? t('common.saving') : t('exp.addExpense')}
                 </button>
               </div>
             </form>
