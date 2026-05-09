@@ -35,10 +35,11 @@ function fmtDate(d: string) {
 }
 
 export default function InvoiceDetailModal({ invoice, onClose }: Props) {
-  const [company, setCompany]           = useState<CompanyForPDF | null>(null)
-  const [clientAddress, setClientAddress] = useState('')
-  const [clientEmail, setClientEmail]     = useState('')
-  const [downloading, setDownloading]     = useState(false)
+  const [company, setCompany]               = useState<CompanyForPDF | null>(null)
+  const [hasCompanySettings, setHasCompanySettings] = useState(true)
+  const [clientAddress, setClientAddress]   = useState('')
+  const [clientEmail, setClientEmail]       = useState('')
+  const [downloading, setDownloading]       = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -57,6 +58,7 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
         .maybeSingle(),
     ]).then(([companyRes, taxRes, clientRes]) => {
       const cs = companyRes.data
+      setHasCompanySettings(cs !== null && !!cs.company_name)
       setCompany({
         company_name:    cs?.company_name    ?? '',
         company_address: cs?.company_address ?? '',
@@ -84,22 +86,25 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
   async function handleDownload() {
     if (!company) return
     setDownloading(true)
-    const { generateInvoicePDF } = await import('@/lib/generateInvoicePDF')
-    generateInvoicePDF(
-      {
-        number: invoice.number,
-        date: invoice.date,
-        due_date: invoice.due_date,
-        status: invoice.status,
-        client: invoice.client,
-        clientAddress,
-        clientEmail,
-        line_items: items,
-        amount: invoice.amount,
-      },
-      company,
-    )
-    setDownloading(false)
+    try {
+      const { generateInvoicePDF } = await import('@/lib/generateInvoicePDF')
+      await generateInvoicePDF(
+        {
+          number:        invoice.number,
+          date:          invoice.date,
+          due_date:      invoice.due_date,
+          status:        invoice.status,
+          client:        invoice.client,
+          clientAddress,
+          clientEmail,
+          line_items:    items,
+          amount:        invoice.amount,
+        },
+        company,
+      )
+    } finally {
+      setDownloading(false)
+    }
   }
 
   return (
@@ -124,6 +129,20 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
             </svg>
           </button>
         </div>
+
+        {/* ── No-settings warning ── */}
+        {company !== null && !hasCompanySettings && (
+          <div className="mx-6 mb-0 mt-0 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <p className="text-xs text-amber-700">
+              Company name is missing.{' '}
+              <a href="/company-settings" className="font-semibold underline">Complete Company Settings</a>{' '}
+              before downloading to include your company details in the PDF.
+            </p>
+          </div>
+        )}
 
         {/* ── Invoice document ── */}
         <div className="p-6">
@@ -168,7 +187,11 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
                   <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">From</p>
                   {company ? (
                     <>
-                      <p className="text-sm font-bold text-gray-900">{company.company_name || 'Your Company Name'}</p>
+                      {company.company_name ? (
+                        <p className="text-sm font-bold text-gray-900">{company.company_name}</p>
+                      ) : (
+                        <p className="text-sm font-semibold text-red-600">Please complete Company Settings</p>
+                      )}
                       {company.company_address && (
                         <p className="text-sm text-gray-500 mt-1 whitespace-pre-line">{company.company_address}</p>
                       )}
@@ -180,12 +203,6 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
                       )}
                       {company.email && (
                         <p className="text-xs text-gray-500 mt-0.5">{company.email}</p>
-                      )}
-                      {!company.company_name && (
-                        <p className="text-xs text-amber-600 mt-1">
-                          ← Complete your profile in{' '}
-                          <a href="/company-settings" className="underline">Company Settings</a>
-                        </p>
                       )}
                     </>
                   ) : (
