@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import TaxCalculator from '@/app/ui/TaxCalculator'
 
 interface ReportCard {
   id: string
@@ -209,6 +210,9 @@ export default function ReportsClient() {
           </table>
         </div>
       </div>
+
+      {/* Azerbaijan Tax Calculator */}
+      <TaxCalculator />
     </div>
   )
 }

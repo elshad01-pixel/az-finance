@@ -1,4 +1,5 @@
 import Link from "next/link";
+import TaxDeadlines from "@/app/ui/TaxDeadlines";
 
 const summaryCards = [
   {
@@ -223,6 +224,9 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
+
+      {/* Tax Deadlines */}
+      <TaxDeadlines />
     </div>
   );
 }
