@@ -101,68 +101,90 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
   const vatAmount  = company.vat_registered ? subtotal * 0.18 : 0
   const grandTotal = subtotal + vatAmount
 
-  // ── 1. Header bar ──────────────────────────────────────────────────────
+  // ── Column boundary shared by dates row and FROM/BILL TO ──────────────
+  //   Left column : X = MARGIN … MID_X - 5
+  //   Right column: X = MID_X  … W - MARGIN
+  const MID_X = 108
 
+  // ── 1. Header bar (54 mm tall) ────────────────────────────────────────
+  //   Status badge lives here — completely inside the blue band.
+
+  const HEADER_H = 54
   doc.setFillColor(30, 58, 138)
-  doc.rect(0, 0, W, 48, 'F')
+  doc.rect(0, 0, W, HEADER_H, 'F')
 
+  // Logo left
   doc.setFontSize(30)
   doc.setFont('Roboto', 'bold')
   doc.setTextColor(255, 255, 255)
-  doc.text('Az', MARGIN, 24)
+  doc.text('Az', MARGIN, 23)
   const azW = doc.getTextWidth('Az')
   doc.setTextColor(147, 197, 253)
-  doc.text('Finance', MARGIN + azW, 24)
+  doc.text('Finance', MARGIN + azW, 23)
 
   doc.setFontSize(8.5)
   doc.setFont('Roboto', 'normal')
   doc.setTextColor(147, 197, 253)
-  doc.text('Financial Management Platform', MARGIN, 33)
+  doc.text('Financial Management Platform', MARGIN, 32)
 
-  doc.setFontSize(30)
+  // "INVOICE" + number right
+  doc.setFontSize(28)
   doc.setFont('Roboto', 'bold')
   doc.setTextColor(255, 255, 255)
-  doc.text('INVOICE', W - MARGIN, 26, { align: 'right' })
+  doc.text('INVOICE', W - MARGIN, 22, { align: 'right' })
 
   doc.setFontSize(9.5)
   doc.setFont('Roboto', 'normal')
   doc.setTextColor(219, 234, 254)
-  doc.text(invoice.number, W - MARGIN, 37, { align: 'right' })
+  doc.text(invoice.number, W - MARGIN, 32, { align: 'right' })
 
-  // ── 2. Meta row (dates + status) ──────────────────────────────────────
-
-  const metaY  = 58
-  const dateX  = W - MARGIN - 80
-
-  doc.setFontSize(7.5)
-  doc.setFont('Roboto', 'bold')
-  doc.setTextColor(107, 114, 128)
-  doc.text('INVOICE DATE', dateX, metaY)
-  doc.text('DUE DATE', dateX + 42, metaY)
-
-  doc.setFontSize(10)
-  doc.setFont('Roboto', 'bold')
-  doc.setTextColor(17, 24, 39)
-  doc.text(fmtDate(invoice.date),     dateX,      metaY + 6.5)
-  doc.text(fmtDate(invoice.due_date), dateX + 42, metaY + 6.5)
-
+  // Status badge — below invoice number, right-aligned, inside header
   const statusFill: Record<string, [number, number, number]> = {
     Paid:   [22, 163, 74],
     Unpaid: [220, 38, 38],
     Draft:  [107, 114, 128],
   }
   const [sr, sg, sb] = statusFill[invoice.status] ?? [107, 114, 128]
+  const BADGE_W = 34
+  const badgeX  = W - MARGIN - BADGE_W        // right-aligned
   doc.setFillColor(sr, sg, sb)
-  doc.roundedRect(dateX, metaY + 12, 24, 6.5, 1.5, 1.5, 'F')
-  doc.setFontSize(7.5)
+  doc.roundedRect(badgeX, 38, BADGE_W, 9, 2, 2, 'F')
+  doc.setFontSize(8)
   doc.setFont('Roboto', 'bold')
   doc.setTextColor(255, 255, 255)
-  doc.text(invoice.status.toUpperCase(), dateX + 12, metaY + 16.8, { align: 'center' })
+  doc.text(invoice.status.toUpperCase(), badgeX + BADGE_W / 2, 44, { align: 'center' })
+
+  // ── 2. Dates row ──────────────────────────────────────────────────────
+  //   Left column  = invoice date (aligned with FROM below)
+  //   Right column = due date     (aligned with BILL TO below)
+  //   No status badge here — it's in the header.
+
+  const datesY = HEADER_H + 10   // 64
+
+  doc.setFontSize(7.5)
+  doc.setFont('Roboto', 'bold')
+  doc.setTextColor(107, 114, 128)
+  doc.text('INVOICE DATE', MARGIN, datesY)
+  doc.text('DUE DATE',     MID_X,  datesY)
+
+  doc.setFontSize(10.5)
+  doc.setFont('Roboto', 'bold')
+  doc.setTextColor(17, 24, 39)
+  doc.text(fmtDate(invoice.date),     MARGIN, datesY + 7)
+  doc.text(fmtDate(invoice.due_date), MID_X,  datesY + 7)
 
   // ── 3. FROM / BILL TO ─────────────────────────────────────────────────
+  //   Starts well below the dates row.
+  //   Left column and right column share MID_X with the dates above.
 
-  const partyY = metaY
-  const midX   = W / 2 + 5
+  const partyY = datesY + 20   // 84
+
+  // Thin rule between dates and party section
+  doc.setDrawColor(229, 231, 235)
+  doc.setLineWidth(0.3)
+  doc.line(MARGIN, partyY - 5, W - MARGIN, partyY - 5)
+
+  // ── FROM ─────────────────────────────────────────────────────────────
 
   doc.setFontSize(7.5)
   doc.setFont('Roboto', 'bold')
@@ -171,14 +193,13 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
 
   doc.setFontSize(11)
   doc.setFont('Roboto', 'bold')
-  doc.setTextColor(17, 24, 39)
 
   if (company.company_name) {
+    doc.setTextColor(17, 24, 39)
     doc.text(company.company_name, MARGIN, partyY + 7)
   } else {
     doc.setTextColor(185, 28, 28)
     doc.text('Please complete Company Settings', MARGIN, partyY + 7)
-    doc.setTextColor(17, 24, 39)
   }
 
   doc.setFontSize(9)
@@ -198,24 +219,26 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
     fromY += 5
   }
   if (company.tax_id) {
-    fromY = labeledLine(doc, 'VÖEN: ', company.tax_id, MARGIN, fromY)
+    fromY = labeledLine(doc, 'VÖEN: ',  company.tax_id, MARGIN, fromY)
   }
   if (company.phone) {
-    fromY = labeledLine(doc, 'Tel: ', company.phone, MARGIN, fromY)
+    fromY = labeledLine(doc, 'Tel: ',   company.phone,  MARGIN, fromY)
   }
   if (company.email) {
-    fromY = labeledLine(doc, 'Email: ', company.email, MARGIN, fromY)
+    fromY = labeledLine(doc, 'Email: ', company.email,  MARGIN, fromY)
   }
+
+  // ── BILL TO ──────────────────────────────────────────────────────────
 
   doc.setFontSize(7.5)
   doc.setFont('Roboto', 'bold')
   doc.setTextColor(107, 114, 128)
-  doc.text('BILL TO', midX, partyY)
+  doc.text('BILL TO', MID_X, partyY)
 
   doc.setFontSize(11)
   doc.setFont('Roboto', 'bold')
   doc.setTextColor(17, 24, 39)
-  doc.text(invoice.client, midX, partyY + 7)
+  doc.text(invoice.client, MID_X, partyY + 7)
 
   doc.setFontSize(9)
   let toY = partyY + 13.5
@@ -224,14 +247,14 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
     doc.setFont('Roboto', 'normal')
     doc.setTextColor(75, 85, 99)
     for (const part of invoice.clientAddress.split(',')) {
-      if (part.trim()) { doc.text(part.trim(), midX, toY); toY += 5 }
+      if (part.trim()) { doc.text(part.trim(), MID_X, toY); toY += 5 }
     }
   }
   if (invoice.clientEmail) {
-    toY = labeledLine(doc, 'Email: ', invoice.clientEmail, midX, toY)
+    toY = labeledLine(doc, 'Email: ', invoice.clientEmail, MID_X, toY)
   }
 
-  // ── 4. Divider ────────────────────────────────────────────────────────
+  // ── 4. Divider (after both party columns finish) ──────────────────────
 
   const dividerY = Math.max(fromY, toY) + 6
   doc.setDrawColor(229, 231, 235)
@@ -240,10 +263,8 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
 
   // ── 5. Line items table ───────────────────────────────────────────────
 
-  const tableStartY = dividerY + 6
-
   autoTable(doc, {
-    startY: tableStartY,
+    startY: dividerY + 6,
     head: [['Təsvir / Description', 'Miq.', 'Vahid Qiymət (₼)', 'Cəmi (₼)']],
     body: items.map(item => [
       item.description,
@@ -332,15 +353,9 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
     let bY = totY + 13
     const bX = MARGIN + 4
 
-    if (company.bank_name) {
-      bY = labeledLine(doc, 'Bank: ', company.bank_name, bX, bY, [30, 58, 138], [17, 24, 39])
-    }
-    if (company.bank_account) {
-      bY = labeledLine(doc, 'Hesab / IBAN: ', company.bank_account, bX, bY, [30, 58, 138], [17, 24, 39])
-    }
-    if (company.swift_code) {
-      labeledLine(doc, 'SWIFT / BIK: ', company.swift_code, bX, bY, [30, 58, 138], [17, 24, 39])
-    }
+    if (company.bank_name)    bY = labeledLine(doc, 'Bank: ',        company.bank_name,    bX, bY, [30, 58, 138], [17, 24, 39])
+    if (company.bank_account) bY = labeledLine(doc, 'Hesab / IBAN: ',company.bank_account, bX, bY, [30, 58, 138], [17, 24, 39])
+    if (company.swift_code)       labeledLine(doc, 'SWIFT / BIK: ', company.swift_code,   bX, bY, [30, 58, 138], [17, 24, 39])
   }
 
   // ── 8. Footer ─────────────────────────────────────────────────────────
