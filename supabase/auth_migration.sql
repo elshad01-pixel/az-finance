@@ -17,9 +17,9 @@ DROP POLICY IF EXISTS "anon_all" ON clients;
 DROP POLICY IF EXISTS "anon_all" ON invoices;
 DROP POLICY IF EXISTS "anon_all" ON expenses;
 
-CREATE POLICY "users_own_clients"  ON clients  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "users_own_invoices" ON invoices FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "users_own_expenses" ON expenses FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "users_own_clients"  ON clients  FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "users_own_invoices" ON invoices FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "users_own_expenses" ON expenses FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- ── 3. Claim the existing seed data ──────────────────────────
 -- The seed data has user_id = NULL so it won't appear after login.
