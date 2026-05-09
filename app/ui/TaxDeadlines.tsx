@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { useLanguage } from '@/lib/LanguageContext'
+import type { TranslationKey } from '@/lib/i18n'
+
+type TFn = (key: TranslationKey) => string
 
 interface TaxSettings {
   tax_regime:          'simplified' | 'profit_tax' | 'income_tax'
@@ -23,87 +27,76 @@ function daysUntil(date: Date, today: Date): number {
   return Math.ceil((date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-// Next occurrence of a specific day-of-month (looks in current month first, then next)
 function nextMonthly(day: number, today: Date): Date {
   const candidate = new Date(today.getFullYear(), today.getMonth(), day)
   if (candidate >= today) return candidate
   return new Date(today.getFullYear(), today.getMonth() + 1, day)
 }
 
-// Quarterly deadlines fall on the given day of April, July, October, January.
-// Scans forward from today to find the next one that hasn't passed.
 function nextQuarterly(day: number, today: Date): Date {
   const candidates = [
-    new Date(today.getFullYear(),     3, day),  // Apr
-    new Date(today.getFullYear(),     6, day),  // Jul
-    new Date(today.getFullYear(),     9, day),  // Oct
-    new Date(today.getFullYear() + 1, 0, day),  // Jan (next year)
+    new Date(today.getFullYear(),     3, day),
+    new Date(today.getFullYear(),     6, day),
+    new Date(today.getFullYear(),     9, day),
+    new Date(today.getFullYear() + 1, 0, day),
   ]
   return candidates.find(d => d >= today) ?? candidates[3]
 }
 
-// Annual: 31 March — returns next year's date if this year's has passed
 function nextMarch31(today: Date): Date {
   const candidate = new Date(today.getFullYear(), 2, 31)
   return candidate >= today ? candidate : new Date(today.getFullYear() + 1, 2, 31)
 }
 
-function buildDeadlines(s: TaxSettings, today: Date): Deadline[] {
+function buildDeadlines(s: TaxSettings, today: Date, t: TFn): Deadline[] {
   const make = (title: string, description: string, date: Date): Deadline => ({
     title, description, date, days: daysUntil(date, today),
   })
 
   const deadlines: Deadline[] = []
 
-  // ── Always shown ────────────────────────────────────────────────────
-  // Social, health & unemployment insurance: monthly, 15th of following month
   deadlines.push(make(
-    'Social & Health Insurance',
-    'Monthly social, health & unemployment contributions — 15th of following month',
+    t('tax.socialInsurance'),
+    t('tax.socialInsuranceDesc'),
     nextMonthly(15, today),
   ))
 
-  // Payroll PIT: monthly, 20th of following month
   deadlines.push(make(
-    'Payroll Income Tax (PIT)',
-    'Monthly personal income tax on employee salaries — 20th of following month',
+    t('tax.pit'),
+    t('tax.pitDesc'),
     nextMonthly(20, today),
   ))
 
-  // ── VAT (only if registered) ─────────────────────────────────────────
   if (s.vat_registered) {
     deadlines.push(make(
-      'VAT Return & Payment',
-      'Monthly VAT return and payment (18%) — 20th of following month',
+      t('tax.vatReturn'),
+      t('tax.vatDesc'),
       nextMonthly(20, today),
     ))
   }
 
-  // ── Simplified tax regime ────────────────────────────────────────────
-  // Quarterly payment: 20th of April, July, October, January
   if (s.tax_regime === 'simplified') {
     const rate   = s.business_type === 'trade_food' ? '8%' : '2%'
-    const relief = s.simplified_eligible && s.employee_count >= 3 ? ' · 75% relief applies' : ''
+    const relief = s.simplified_eligible && s.employee_count >= 3 ? t('tax.simplifiedRelief') : ''
     deadlines.push(make(
-      'Simplified Tax',
-      `Quarterly payment — ${rate} of gross revenue${relief} — 20th after quarter end`,
+      t('tax.simplifiedTaxTitle'),
+      t('tax.simplifiedTaxDesc').replace('{rate}', rate).replace('{relief}', relief),
       nextQuarterly(20, today),
     ))
   }
 
-  // ── Profit tax / income tax regime ──────────────────────────────────
   if (s.tax_regime === 'profit_tax' || s.tax_regime === 'income_tax') {
-    // Current (advance) tax payments: quarterly, 15th of April, July, October, January
     deadlines.push(make(
-      'Current Tax Payment',
-      'Quarterly advance payment on estimated taxable profit — 15th after quarter end',
+      t('tax.currentPayment'),
+      t('tax.currentPaymentDesc'),
       nextQuarterly(15, today),
     ))
-    // Annual declaration: 31 March of the following year
-    const label = s.tax_regime === 'profit_tax' ? 'Profit Tax' : 'Income Tax'
+    const titleKey: TranslationKey = s.tax_regime === 'profit_tax'
+      ? 'tax.annualProfitDecl'
+      : 'tax.annualIncomeDecl'
     deadlines.push(make(
-      `Annual ${label} Declaration`,
-      `Annual declaration and final payment — 31 March of following year`,
+      t(titleKey),
+      t('tax.annualDeclDesc'),
       nextMarch31(today),
     ))
   }
@@ -112,22 +105,13 @@ function buildDeadlines(s: TaxSettings, today: Date): Deadline[] {
 }
 
 function urgency(days: number) {
-  if (days <= 7)  return { bg: 'bg-red-50',    border: 'border-red-200',    badge: 'bg-red-100 text-red-700',    dot: 'bg-red-500'    }
-  if (days <= 30) return { bg: 'bg-amber-50',  border: 'border-amber-200',  badge: 'bg-amber-100 text-amber-700',  dot: 'bg-amber-500'  }
-  return              { bg: 'bg-green-50',  border: 'border-green-200',  badge: 'bg-green-100 text-green-700',  dot: 'bg-green-500'  }
-}
-
-function fmtDate(d: Date) {
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-function daysLabel(n: number) {
-  if (n === 0) return 'Today'
-  if (n === 1) return '1 day'
-  return `${n} days`
+  if (days <= 7)  return { bg: 'bg-red-50',   border: 'border-red-200',   badge: 'bg-red-100 text-red-700',   dot: 'bg-red-500'   }
+  if (days <= 30) return { bg: 'bg-amber-50', border: 'border-amber-200', badge: 'bg-amber-100 text-amber-700', dot: 'bg-amber-500' }
+  return              { bg: 'bg-green-50', border: 'border-green-200', badge: 'bg-green-100 text-green-700', dot: 'bg-green-500' }
 }
 
 export default function TaxDeadlines() {
+  const { t, lang } = useLanguage()
   const [settings, setSettings] = useState<TaxSettings | null>(null)
   const [loading, setLoading]   = useState(true)
 
@@ -142,6 +126,18 @@ export default function TaxDeadlines() {
       })
   }, [])
 
+  const locale = lang === 'az' ? 'az-AZ' : 'en-GB'
+
+  function fmtDate(d: Date) {
+    return d.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })
+  }
+
+  function daysLabel(n: number) {
+    if (n === 0) return t('tax.today')
+    if (n === 1) return t('tax.oneDay')
+    return t('tax.days').replace('{n}', String(n))
+  }
+
   if (loading) return null
 
   if (!settings) {
@@ -155,29 +151,29 @@ export default function TaxDeadlines() {
             </svg>
           </div>
           <div>
-            <p className="text-sm font-semibold text-amber-900">Tax setup incomplete</p>
-            <p className="text-xs text-amber-700 mt-0.5">Configure your tax regime to see upcoming deadlines.</p>
+            <p className="text-sm font-semibold text-amber-900">{t('tax.setupIncomplete')}</p>
+            <p className="text-xs text-amber-700 mt-0.5">{t('tax.setupMsg')}</p>
           </div>
         </div>
         <Link
           href="/tax-settings"
           className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
-          Set Up Now
+          {t('tax.setUpNow')}
         </Link>
       </div>
     )
   }
 
   const today     = new Date()
-  const deadlines = buildDeadlines(settings, today)
+  const deadlines = buildDeadlines(settings, today, t)
 
   return (
     <div className="mt-6">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-700">Upcoming Tax Deadlines</h3>
+        <h3 className="text-sm font-semibold text-gray-700">{t('tax.upcomingDeadlines')}</h3>
         <Link href="/tax-settings" className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-          Tax Settings →
+          {t('tax.settingsLink')}
         </Link>
       </div>
 

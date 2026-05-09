@@ -148,6 +148,30 @@ const en = {
   'rep.incomeTax':      'Income Tax',
   'rep.simplifiedTax':  'Simplified Tax ({rate}% of collected revenue)',
   'rep.profitTax':      'Profit / Income Tax (20% of gross profit)',
+
+  // ── Tax Deadlines widget ──────────────────────────────────────────────────
+  'tax.upcomingDeadlines':   'Upcoming Tax Deadlines',
+  'tax.settingsLink':        'Tax Settings →',
+  'tax.setupIncomplete':     'Tax setup incomplete',
+  'tax.setupMsg':            'Configure your tax regime to see upcoming deadlines.',
+  'tax.setUpNow':            'Set Up Now',
+  'tax.today':               'Today',
+  'tax.oneDay':              '1 day',
+  'tax.days':                '{n} days',
+  'tax.socialInsurance':     'Social & Health Insurance',
+  'tax.socialInsuranceDesc': 'Monthly social, health & unemployment contributions — 15th of following month',
+  'tax.pit':                 'Payroll Income Tax (PIT)',
+  'tax.pitDesc':             'Monthly personal income tax on employee salaries — 20th of following month',
+  'tax.vatReturn':           'VAT Return & Payment',
+  'tax.vatDesc':             'Monthly VAT return and payment (18%) — 20th of following month',
+  'tax.simplifiedTaxTitle':  'Simplified Tax',
+  'tax.simplifiedTaxDesc':   'Quarterly payment — {rate} of gross revenue{relief} — 20th after quarter end',
+  'tax.simplifiedRelief':    ' · 75% relief applies',
+  'tax.currentPayment':      'Current Tax Payment',
+  'tax.currentPaymentDesc':  'Quarterly advance payment on estimated taxable profit — 15th after quarter end',
+  'tax.annualProfitDecl':    'Annual Profit Tax Declaration',
+  'tax.annualIncomeDecl':    'Annual Income Tax Declaration',
+  'tax.annualDeclDesc':      'Annual declaration and final payment — 31 March of following year',
 } as const
 
 const az: Record<keyof typeof en, string> = {
@@ -298,6 +322,30 @@ const az: Record<keyof typeof en, string> = {
   'rep.incomeTax':      'Gəlir Vergisi',
   'rep.simplifiedTax':  'Sadələşdirilmiş Vergi (toplanan gəlirin {rate}%)',
   'rep.profitTax':      'Mənfəət / Gəlir Vergisi (ümumi mənfəətin 20%)',
+
+  // ── Tax Deadlines widget ──────────────────────────────────────────────────
+  'tax.upcomingDeadlines':   'Yaxınlaşan Vergi Müddətləri',
+  'tax.settingsLink':        'Vergi Ayarları →',
+  'tax.setupIncomplete':     'Vergi ayarları tamamlanmayıb',
+  'tax.setupMsg':            'Yaxınlaşan müddətləri görmək üçün vergi rejimini konfiqurasiya edin.',
+  'tax.setUpNow':            'İndi Qur',
+  'tax.today':               'Bu gün',
+  'tax.oneDay':              '1 gün',
+  'tax.days':                '{n} gün',
+  'tax.socialInsurance':     'Sosial və Sağlamlıq Sığortası',
+  'tax.socialInsuranceDesc': 'Aylıq sosial, sağlamlıq və işsizlik sığortası — növbəti ayın 15-i',
+  'tax.pit':                 'Əmək haqqı Gəlir Vergisi',
+  'tax.pitDesc':             'İşçilərin maaşından aylıq fərdi gəlir vergisi — növbəti ayın 20-si',
+  'tax.vatReturn':           'ƏDV Hesabatı və Ödənişi',
+  'tax.vatDesc':             'Aylıq ƏDV hesabatı və ödənişi (18%) — növbəti ayın 20-si',
+  'tax.simplifiedTaxTitle':  'Sadələşdirilmiş Vergi',
+  'tax.simplifiedTaxDesc':   'Rüblük ödəniş — ümumi gəlirin {rate}{relief} — rüb bitimindən sonra 20-si',
+  'tax.simplifiedRelief':    ' · 75% güzəşt tətbiq edilir',
+  'tax.currentPayment':      'Cari Vergi Ödənişi',
+  'tax.currentPaymentDesc':  'Gözlənilən vergi mənfəətinə görə rüblük avans ödənişi — rüb bitimindən sonra 15-i',
+  'tax.annualProfitDecl':    'İllik Mənfəət Vergisi Bəyannaməsi',
+  'tax.annualIncomeDecl':    'İllik Gəlir Vergisi Bəyannaməsi',
+  'tax.annualDeclDesc':      'İllik bəyannamə və yekun ödəniş — növbəti ilin 31 martı',
 } as const
 
 export const translations = { en, az } as const
