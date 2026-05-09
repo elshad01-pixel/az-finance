@@ -22,6 +22,7 @@ export interface InvoiceForPDF {
 export interface CompanyForPDF {
   company_name:    string
   company_address: string
+  city:            string
   tax_id:          string
   phone:           string
   email:           string
@@ -190,6 +191,12 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
       if (line.trim()) { doc.text(line.trim(), MARGIN, fromY); fromY += 5 }
     }
   }
+  if (company.city) {
+    doc.setFont('Roboto', 'normal')
+    doc.setTextColor(75, 85, 99)
+    doc.text(company.city, MARGIN, fromY)
+    fromY += 5
+  }
   if (company.tax_id) {
     fromY = labeledLine(doc, 'VÖEN: ', company.tax_id, MARGIN, fromY)
   }
@@ -332,7 +339,7 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
       bY = labeledLine(doc, 'Hesab / IBAN: ', company.bank_account, bX, bY, [30, 58, 138], [17, 24, 39])
     }
     if (company.swift_code) {
-      labeledLine(doc, 'SWIFT: ', company.swift_code, bX, bY, [30, 58, 138], [17, 24, 39])
+      labeledLine(doc, 'SWIFT / BIK: ', company.swift_code, bX, bY, [30, 58, 138], [17, 24, 39])
     }
   }
 

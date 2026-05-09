@@ -45,7 +45,7 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
     Promise.all([
       supabase
         .from('company_settings')
-        .select('company_name, company_address, tax_id, phone, email, bank_name, bank_account, swift_code')
+        .select('company_name, company_address, city, tax_id, phone, email, bank_name, bank_account, swift_code')
         .maybeSingle(),
       supabase
         .from('tax_settings')
@@ -62,6 +62,7 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
       setCompany({
         company_name:    cs?.company_name    ?? '',
         company_address: cs?.company_address ?? '',
+        city:            cs?.city            ?? '',
         tax_id:          cs?.tax_id          ?? '',
         phone:           cs?.phone           ?? '',
         email:           cs?.email           ?? '',
@@ -195,6 +196,9 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
                       {company.company_address && (
                         <p className="text-sm text-gray-500 mt-1 whitespace-pre-line">{company.company_address}</p>
                       )}
+                      {company.city && (
+                        <p className="text-sm text-gray-500 mt-0.5">{company.city}</p>
+                      )}
                       {company.tax_id && (
                         <p className="text-xs text-gray-500 mt-0.5"><span className="font-semibold">VÖEN:</span> {company.tax_id}</p>
                       )}
@@ -274,7 +278,7 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
                 <div className="space-y-1">
                   {company.bank_name    && <p className="text-xs text-gray-700"><span className="font-semibold">Bank:</span> {company.bank_name}</p>}
                   {company.bank_account && <p className="text-xs text-gray-700"><span className="font-semibold">Hesab / IBAN:</span> {company.bank_account}</p>}
-                  {company.swift_code   && <p className="text-xs text-gray-700"><span className="font-semibold">SWIFT:</span> {company.swift_code}</p>}
+                  {company.swift_code   && <p className="text-xs text-gray-700"><span className="font-semibold">SWIFT / BIK:</span> {company.swift_code}</p>}
                 </div>
               </div>
             )}

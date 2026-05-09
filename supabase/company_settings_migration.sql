@@ -8,12 +8,13 @@ CREATE TABLE company_settings (
   user_id         UUID REFERENCES auth.users(id) UNIQUE NOT NULL DEFAULT auth.uid(),
   company_name    TEXT NOT NULL DEFAULT '',
   company_address TEXT NOT NULL DEFAULT '',
+  city            TEXT NOT NULL DEFAULT '',
   tax_id          TEXT NOT NULL DEFAULT '',   -- VÖEN
   phone           TEXT NOT NULL DEFAULT '',
   email           TEXT NOT NULL DEFAULT '',
   bank_name       TEXT NOT NULL DEFAULT '',
   bank_account    TEXT NOT NULL DEFAULT '',
-  swift_code      TEXT NOT NULL DEFAULT '',
+  swift_code      TEXT NOT NULL DEFAULT '',   -- SWIFT / BIK
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

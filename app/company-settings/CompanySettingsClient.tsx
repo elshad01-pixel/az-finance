@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 interface CompanySettings {
   company_name:    string
   company_address: string
+  city:            string
   tax_id:          string
   phone:           string
   email:           string
@@ -17,6 +18,7 @@ interface CompanySettings {
 const DEFAULTS: CompanySettings = {
   company_name:    '',
   company_address: '',
+  city:            '',
   tax_id:          '',
   phone:           '',
   email:           '',
@@ -36,7 +38,7 @@ export default function CompanySettingsClient() {
   useEffect(() => {
     supabase
       .from('company_settings')
-      .select('company_name, company_address, tax_id, phone, email, bank_name, bank_account, swift_code')
+      .select('company_name, company_address, city, tax_id, phone, email, bank_name, bank_account, swift_code')
       .maybeSingle()
       .then(({ data }) => {
         if (data) setSettings(data as CompanySettings)
@@ -103,9 +105,20 @@ export default function CompanySettingsClient() {
               <textarea
                 value={settings.company_address}
                 onChange={set('company_address')}
-                placeholder={'12 Nizami St\nBaku, Azerbaijan'}
+                placeholder="12 Nizami St"
                 rows={2}
                 className={`${INPUT} resize-none`}
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">City</label>
+              <input
+                type="text"
+                value={settings.city}
+                onChange={set('city')}
+                placeholder="Baku"
+                className={INPUT}
               />
             </div>
 
@@ -180,12 +193,12 @@ export default function CompanySettingsClient() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1.5">SWIFT / BIC</label>
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">SWIFT / BIK</label>
               <input
                 type="text"
                 value={settings.swift_code}
                 onChange={set('swift_code')}
-                placeholder="IBAZAZ2X"
+                placeholder="e.g. IBAZAZ2X"
                 className={`${INPUT} font-mono uppercase`}
               />
             </div>
