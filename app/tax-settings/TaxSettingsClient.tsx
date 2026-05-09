@@ -76,7 +76,7 @@ export default function TaxSettingsClient() {
   if (loading) {
     return (
       <div className="max-w-2xl space-y-5">
-        {[...Array(4)].map((_, i) => (
+        {[...Array(3)].map((_, i) => (
           <div key={i} className="bg-white rounded-xl border border-gray-100 p-6 animate-pulse">
             <div className="h-4 bg-gray-100 rounded w-40 mb-4" />
             <div className="h-12 bg-gray-50 rounded" />

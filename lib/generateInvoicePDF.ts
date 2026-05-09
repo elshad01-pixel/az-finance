@@ -1,0 +1,338 @@
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+
+export interface LineItem {
+  description: string
+  quantity:    number
+  unit_price:  number
+}
+
+export interface InvoiceForPDF {
+  number:        string
+  date:          string
+  due_date:      string
+  status:        string
+  client:        string
+  clientAddress: string
+  clientEmail:   string
+  line_items:    LineItem[]
+  amount:        number
+}
+
+export interface CompanyForPDF {
+  company_name:    string
+  company_address: string
+  tax_id:          string   // VÖEN
+  phone:           string
+  email:           string
+  bank_name:       string
+  bank_account:    string
+  swift_code:      string
+  vat_registered:  boolean
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function money(n: number) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₼'
+}
+
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+// Draw a labelled text line and return next Y position
+function labeledLine(
+  doc: jsPDF, label: string, value: string, x: number, y: number,
+  labelColor: [number, number, number] = [107, 114, 128],
+  valueColor: [number, number, number] = [55,  65,  81],
+): number {
+  if (!value) return y
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...labelColor)
+  doc.text(label, x, y)
+  const lw = doc.getTextWidth(label)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...valueColor)
+  doc.text(value, x + lw + 1, y)
+  return y + 5.5
+}
+
+// ── Main export ────────────────────────────────────────────────────────────
+
+export function generateInvoicePDF(invoice: InvoiceForPDF, company: CompanyForPDF): void {
+  const doc    = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+  const W      = 210
+  const H      = 297
+  const MARGIN = 15
+
+  const items: LineItem[] =
+    invoice.line_items?.length > 0
+      ? invoice.line_items
+      : [{ description: 'Professional Services', quantity: 1, unit_price: invoice.amount }]
+
+  const subtotal   = items.reduce((s, i) => s + i.quantity * i.unit_price, 0)
+  const vatAmount  = company.vat_registered ? subtotal * 0.18 : 0
+  const grandTotal = subtotal + vatAmount
+
+  // ── 1. Header bar ──────────────────────────────────────────────────────
+
+  doc.setFillColor(30, 58, 138)
+  doc.rect(0, 0, W, 48, 'F')
+
+  // Logo — larger: "Az" white + "Finance" blue-300
+  doc.setFontSize(30)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(255, 255, 255)
+  doc.text('Az', MARGIN, 24)
+  const azW = doc.getTextWidth('Az')
+  doc.setTextColor(147, 197, 253)
+  doc.text('Finance', MARGIN + azW, 24)
+
+  // Platform subtitle
+  doc.setFontSize(8.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(147, 197, 253)
+  doc.text('Financial Management Platform', MARGIN, 33)
+
+  // "INVOICE" right
+  doc.setFontSize(30)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(255, 255, 255)
+  doc.text('INVOICE', W - MARGIN, 26, { align: 'right' })
+
+  // Invoice number
+  doc.setFontSize(9.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(219, 234, 254)
+  doc.text(invoice.number, W - MARGIN, 37, { align: 'right' })
+
+  // ── 2. Meta row (dates + status) ──────────────────────────────────────
+
+  const metaY  = 58
+  const dateX  = W - MARGIN - 80
+
+  doc.setFontSize(7.5)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(107, 114, 128)
+  doc.text('INVOICE DATE', dateX, metaY)
+  doc.text('DUE DATE', dateX + 42, metaY)
+
+  doc.setFontSize(10)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(17, 24, 39)
+  doc.text(fmtDate(invoice.date), dateX, metaY + 6.5)
+  doc.text(fmtDate(invoice.due_date), dateX + 42, metaY + 6.5)
+
+  // Status badge
+  const statusFill: Record<string, [number, number, number]> = {
+    Paid:   [22, 163, 74],
+    Unpaid: [220, 38, 38],
+    Draft:  [107, 114, 128],
+  }
+  const [sr, sg, sb] = statusFill[invoice.status] ?? [107, 114, 128]
+  doc.setFillColor(sr, sg, sb)
+  doc.roundedRect(dateX, metaY + 12, 24, 6.5, 1.5, 1.5, 'F')
+  doc.setFontSize(7.5)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(255, 255, 255)
+  doc.text(invoice.status.toUpperCase(), dateX + 12, metaY + 16.8, { align: 'center' })
+
+  // ── 3. FROM / BILL TO ─────────────────────────────────────────────────
+
+  const partyY = metaY
+  const midX   = W / 2 + 5
+
+  // FROM label
+  doc.setFontSize(7.5)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(107, 114, 128)
+  doc.text('FROM', MARGIN, partyY)
+
+  // Company name
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(17, 24, 39)
+  doc.text(company.company_name || 'Your Company Name', MARGIN, partyY + 7)
+
+  doc.setFontSize(9)
+  let fromY = partyY + 13.5
+
+  if (company.company_address) {
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(75, 85, 99)
+    for (const line of company.company_address.split('\n')) {
+      if (line.trim()) { doc.text(line.trim(), MARGIN, fromY); fromY += 5 }
+    }
+  }
+  if (company.tax_id) {
+    fromY = labeledLine(doc, 'VÖEN: ', company.tax_id, MARGIN, fromY)
+  }
+  if (company.phone) {
+    fromY = labeledLine(doc, 'Tel: ', company.phone, MARGIN, fromY)
+  }
+  if (company.email) {
+    fromY = labeledLine(doc, 'Email: ', company.email, MARGIN, fromY)
+  }
+
+  // BILL TO label
+  doc.setFontSize(7.5)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(107, 114, 128)
+  doc.text('BILL TO', midX, partyY)
+
+  // Client name
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(17, 24, 39)
+  doc.text(invoice.client, midX, partyY + 7)
+
+  doc.setFontSize(9)
+  let toY = partyY + 13.5
+
+  if (invoice.clientAddress) {
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(75, 85, 99)
+    for (const part of invoice.clientAddress.split(',')) {
+      if (part.trim()) { doc.text(part.trim(), midX, toY); toY += 5 }
+    }
+  }
+  if (invoice.clientEmail) {
+    toY = labeledLine(doc, 'Email: ', invoice.clientEmail, midX, toY)
+  }
+
+  // ── 4. Divider (dynamic Y) ────────────────────────────────────────────
+
+  const dividerY = Math.max(fromY, toY) + 6
+  doc.setDrawColor(229, 231, 235)
+  doc.setLineWidth(0.4)
+  doc.line(MARGIN, dividerY, W - MARGIN, dividerY)
+
+  // ── 5. Line items table ───────────────────────────────────────────────
+
+  const tableStartY = dividerY + 6
+
+  autoTable(doc, {
+    startY: tableStartY,
+    head: [['Təsvir / Description', 'Miq.', 'Vahid Qiymət (₼)', 'Cəmi (₼)']],
+    body: items.map(item => [
+      item.description,
+      String(item.quantity),
+      money(item.unit_price),
+      money(item.quantity * item.unit_price),
+    ]),
+    styles: {
+      fontSize: 9,
+      cellPadding: { top: 4, bottom: 4, left: 5, right: 5 },
+      textColor: [17, 24, 39],
+      font: 'helvetica',
+    },
+    headStyles: {
+      fillColor:  [30, 58, 138],
+      textColor:  [255, 255, 255],
+      fontStyle:  'bold',
+      fontSize:   9,
+    },
+    alternateRowStyles: { fillColor: [249, 250, 251] },
+    columnStyles: {
+      0: { cellWidth: 'auto' },
+      1: { cellWidth: 16, halign: 'center' },
+      2: { cellWidth: 44, halign: 'right' },
+      3: { cellWidth: 44, halign: 'right', fontStyle: 'bold' },
+    },
+    margin: { left: MARGIN, right: MARGIN },
+  })
+
+  // ── 6. Totals ─────────────────────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tableBottom: number = (doc as any).lastAutoTable.finalY
+  const totX = W - MARGIN - 80
+  let   totY = tableBottom + 10
+
+  // Subtotal
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(107, 114, 128)
+  doc.text('Cəmi (Subtotal):', totX, totY)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(17, 24, 39)
+  doc.text(money(subtotal), W - MARGIN, totY, { align: 'right' })
+  totY += 7
+
+  // ƏDV line — only when VAT registered
+  if (company.vat_registered) {
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(107, 114, 128)
+    doc.text('ƏDV (18%):', totX, totY)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(17, 24, 39)
+    doc.text(money(vatAmount), W - MARGIN, totY, { align: 'right' })
+    totY += 7
+  }
+
+  // Thin separator
+  doc.setDrawColor(209, 213, 219)
+  doc.setLineWidth(0.3)
+  doc.line(totX, totY - 2, W - MARGIN, totY - 2)
+  totY += 3
+
+  // Grand total pill
+  doc.setFillColor(30, 58, 138)
+  doc.roundedRect(totX - 4, totY - 1, W - MARGIN - totX + 4, 12, 2, 2, 'F')
+  doc.setFontSize(10.5)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(255, 255, 255)
+  doc.text('CƏMİ (TOTAL):', totX, totY + 7.5)
+  doc.text(money(grandTotal), W - MARGIN - 2, totY + 7.5, { align: 'right' })
+  totY += 20
+
+  // ── 7. Bank details ───────────────────────────────────────────────────
+
+  const hasBankDetails = company.bank_name || company.bank_account || company.swift_code
+
+  if (hasBankDetails) {
+    // Light blue background box
+    doc.setFillColor(239, 246, 255)
+    doc.setDrawColor(191, 219, 254)
+    doc.setLineWidth(0.4)
+    doc.roundedRect(MARGIN, totY, W - MARGIN * 2, 28, 2, 2, 'FD')
+
+    doc.setFontSize(7.5)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(30, 58, 138)
+    doc.text('BANK REKVİZİTLƏRİ / BANK DETAILS', MARGIN + 4, totY + 7)
+
+    doc.setFontSize(8.5)
+    let bY = totY + 13
+    const bX = MARGIN + 4
+
+    if (company.bank_name) {
+      bY = labeledLine(doc, 'Bank: ', company.bank_name, bX, bY, [30, 58, 138], [17, 24, 39])
+    }
+    if (company.bank_account) {
+      bY = labeledLine(doc, 'Hesab / IBAN: ', company.bank_account, bX, bY, [30, 58, 138], [17, 24, 39])
+    }
+    if (company.swift_code) {
+      labeledLine(doc, 'SWIFT: ', company.swift_code, bX, bY, [30, 58, 138], [17, 24, 39])
+    }
+  }
+
+  // ── 8. Footer ─────────────────────────────────────────────────────────
+
+  doc.setDrawColor(229, 231, 235)
+  doc.setLineWidth(0.4)
+  doc.line(MARGIN, H - 18, W - MARGIN, H - 18)
+
+  doc.setFontSize(7.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(156, 163, 175)
+  doc.text(
+    `AzFinance · ${new Date().toLocaleDateString('en-GB')}`,
+    W / 2,
+    H - 11,
+    { align: 'center' },
+  )
+
+  doc.save(`${invoice.number}.pdf`)
+}

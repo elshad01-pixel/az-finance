@@ -2,18 +2,26 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import InvoiceDetailModal from './InvoiceDetailModal'
 
 type Status = 'Paid' | 'Unpaid' | 'Draft'
 type FilterTab = 'All' | Status
 
+interface StoredLineItem {
+  description: string
+  quantity:    number
+  unit_price:  number
+}
+
 interface Invoice {
-  id: number
-  number: string
-  client: string
-  date: string
-  due_date: string
-  amount: number
-  status: Status
+  id:         number
+  number:     string
+  client:     string
+  date:       string
+  due_date:   string
+  amount:     number
+  status:     Status
+  line_items: StoredLineItem[] | null
 }
 
 interface LineItem {
@@ -44,8 +52,9 @@ const EMPTY_LINE = (): LineItem => ({ id: Date.now(), description: '', quantity:
 export default function InvoicesClient() {
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [loading, setLoading]   = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [search, setSearch]       = useState('')
+  const [showModal, setShowModal]       = useState(false)
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
+  const [search, setSearch]             = useState('')
   const [activeFilter, setActiveFilter] = useState<FilterTab>('All')
 
   const [clientName, setClientName] = useState('')
@@ -94,9 +103,14 @@ export default function InvoicesClient() {
     e.preventDefault()
     setSaving(true)
     const number = `INV-${1000 + invoices.length + 1}`
+    const storedItems = lineItems.map(({ description, quantity, unitPrice }) => ({
+      description,
+      quantity:   parseFloat(quantity)   || 0,
+      unit_price: parseFloat(unitPrice)  || 0,
+    }))
     const { data, error } = await supabase
       .from('invoices')
-      .insert({ number, client: clientName, date: invoiceDate, due_date: dueDate, amount: total, status: 'Draft' })
+      .insert({ number, client: clientName, date: invoiceDate, due_date: dueDate, amount: total, status: 'Draft', line_items: storedItems })
       .select()
       .single()
     if (!error && data) {
@@ -196,7 +210,11 @@ export default function InvoicesClient() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {filtered.map(inv => (
-                    <tr key={inv.id} className="hover:bg-blue-50/40 transition-colors cursor-default group">
+                    <tr
+                      key={inv.id}
+                      onClick={() => setSelectedInvoice(inv)}
+                      className="hover:bg-blue-50/40 transition-colors cursor-pointer group"
+                    >
                       <td className="px-6 py-4 text-sm font-semibold text-blue-600 group-hover:text-blue-700">{inv.number}</td>
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.client}</td>
                       <td className="px-6 py-4 text-sm text-gray-500">{formatDate(inv.date)}</td>
@@ -224,7 +242,15 @@ export default function InvoicesClient() {
         )}
       </div>
 
-      {/* ── Modal ──────────────────────────────────────────────────── */}
+      {/* ── Invoice detail modal ────────────────────────────────────── */}
+      {selectedInvoice && (
+        <InvoiceDetailModal
+          invoice={selectedInvoice}
+          onClose={() => setSelectedInvoice(null)}
+        />
+      )}
+
+      {/* ── New invoice modal ───────────────────────────────────────── */}
       {showModal && (
         <div
           className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-10 px-4"
