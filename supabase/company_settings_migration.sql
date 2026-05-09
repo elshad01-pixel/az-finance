@@ -1,9 +1,21 @@
 -- ============================================================
 -- AzFinance – Company Settings migration
 -- Run in Supabase SQL Editor
+-- Self-contained: no other migration needs to run first
 -- ============================================================
 
-CREATE TABLE company_settings (
+-- Shared helper (safe to run even if already exists)
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ── Table ─────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS company_settings (
   id              BIGSERIAL PRIMARY KEY,
   user_id         UUID REFERENCES auth.users(id) UNIQUE NOT NULL DEFAULT auth.uid(),
   company_name    TEXT NOT NULL DEFAULT '',
@@ -19,14 +31,21 @@ CREATE TABLE company_settings (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Reuse the update_updated_at function (already created in tax_settings_migration.sql)
+-- ── Trigger ───────────────────────────────────────────────────────────────
+
+DROP TRIGGER IF EXISTS company_settings_updated_at ON company_settings;
+
 CREATE TRIGGER company_settings_updated_at
   BEFORE UPDATE ON company_settings
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+-- ── Row Level Security ────────────────────────────────────────────────────
+
 ALTER TABLE company_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users_own_company_settings" ON company_settings;
 
 CREATE POLICY "users_own_company_settings" ON company_settings
   FOR ALL TO authenticated
-  USING (auth.uid() = user_id)
+  USING  (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
