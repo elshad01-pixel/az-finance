@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
 import type { TranslationKey } from '@/lib/i18n'
+import { MAIN_CATEGORIES, CATEGORY_I18N } from '@/lib/categories'
 
 type Period       = 'month' | 'quarter' | 'year' | 'custom'
 type TaxRegime    = 'simplified' | 'profit_tax' | 'income_tax'
@@ -20,7 +21,7 @@ interface TaxSettings {
   vat_registered:      boolean
 }
 
-const CATEGORIES = ['Office', 'Utilities', 'Salaries', 'Transport', 'Other'] as const
+const CATEGORIES = MAIN_CATEGORIES
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -414,9 +415,11 @@ export default function ReportsClient() {
         {catRows.length === 0 && (
           <p className="text-sm text-gray-400 italic px-5 py-3">{t('rep.noExpenses')}</p>
         )}
-        {catRows.map(r => (
-          <PLRow key={r.cat} label={r.cat} curr={r.curr} prev={r.prev} indent invert />
-        ))}
+        {catRows.map(r => {
+          const i18nKey = CATEGORY_I18N[r.cat]
+          const label   = i18nKey ? t(i18nKey as TranslationKey) : r.cat
+          return <PLRow key={r.cat} label={label} curr={r.curr} prev={r.prev} indent invert />
+        })}
         <PLRow label={t('rep.totalExpenses')} curr={totalExp} prev={prevTotalExp} bold invert />
 
         {/* PROFIT */}

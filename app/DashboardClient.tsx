@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import TaxDeadlines from "@/app/ui/TaxDeadlines";
+import RecurringAlert from "@/app/ui/RecurringAlert";
 import { useLanguage } from "@/lib/LanguageContext";
 
 export default function DashboardClient() {
@@ -214,6 +215,9 @@ export default function DashboardClient() {
           ))}
         </div>
       </div>
+
+      {/* Recurring Expenses Alert */}
+      <RecurringAlert />
 
       {/* Tax Deadlines */}
       <TaxDeadlines />
