@@ -118,6 +118,14 @@ export default function InvoicesClient() {
   // ── PDF download ──────────────────────────────────────────────────────
   const [downloadingId, setDownloadingId] = useState<number | null>(null)
 
+  // ── Toast ─────────────────────────────────────────────────────────────
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+
+  function showToast(msg: string, ok: boolean) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 4000)
+  }
+
   // ── Fetch ─────────────────────────────────────────────────────────────
   useEffect(() => {
     supabase
@@ -262,6 +270,14 @@ export default function InvoicesClient() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      showToast(t('inv.saveError'), false)
+      setSaving(false)
+      return
+    }
+
     const storedItems = lineItems.map(({ description, quantity, unitPrice }) => ({
       description,
       quantity:   parseFloat(quantity)  || 0,
@@ -272,18 +288,53 @@ export default function InvoicesClient() {
       const { data, error } = await supabase
         .from('invoices')
         .update({ client: clientName, date: invoiceDate, due_date: dueDate, amount: total, line_items: storedItems })
-        .eq('id', editingInvoice.id).select().single()
-      if (!error && data) setInvoices(prev => prev.map(i => i.id === editingInvoice.id ? data as Invoice : i))
+        .eq('id', editingInvoice.id)
+        .select()
+        .single()
+      if (error || !data) {
+        console.error('[invoice update]', error)
+        showToast(t('inv.saveError'), false)
+      } else {
+        setInvoices(prev => prev.map(i => i.id === editingInvoice.id ? data as Invoice : i))
+        showToast(t('inv.updatedOk'), true)
+        closeModal()
+      }
     } else {
-      const number = `INV-${1000 + invoices.length + 1}`
+      // Query the DB for the actual latest invoice number to avoid stale-state collisions
+      const { data: lastRow } = await supabase
+        .from('invoices')
+        .select('number')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const lastNum = lastRow?.number ? (parseInt(lastRow.number.replace(/\D+/, '')) || 1000) : 1000
+      const number = `INV-${lastNum + 1}`
+
       const { data, error } = await supabase
         .from('invoices')
-        .insert({ number, client: clientName, date: invoiceDate, due_date: dueDate, amount: total, status: 'Draft', line_items: storedItems })
-        .select().single()
-      if (!error && data) setInvoices(prev => [data as Invoice, ...prev])
+        .insert({
+          user_id:    user.id,
+          number,
+          client:     clientName,
+          date:       invoiceDate,
+          due_date:   dueDate,
+          amount:     total,
+          status:     'Draft',
+          line_items: storedItems,
+        })
+        .select()
+        .single()
+      if (error || !data) {
+        console.error('[invoice insert]', error)
+        showToast(t('inv.saveError'), false)
+      } else {
+        setInvoices(prev => [data as Invoice, ...prev])
+        showToast(t('inv.savedOk'), true)
+        closeModal()
+      }
     }
+
     setSaving(false)
-    closeModal()
   }
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -686,6 +737,27 @@ export default function InvoicesClient() {
             </div>
 
           </div>
+        </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium transition-all animate-in ${
+          toast.ok
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-red-50   border-red-200   text-red-800'
+        }`}>
+          {toast.ok ? (
+            <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          )}
+          {toast.msg}
         </div>
       )}
 

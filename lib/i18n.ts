@@ -90,6 +90,9 @@ const en = {
   'inv.deleteMsg':         'Invoice {number} will be permanently deleted. This cannot be undone.',
   'inv.finalizeMsg':       'Invoice {number} will be marked as Unpaid. It can no longer be edited after this.',
   'inv.loadingInvoices':   'Loading invoices…',
+  'inv.savedOk':           'Invoice created successfully.',
+  'inv.updatedOk':         'Invoice updated successfully.',
+  'inv.saveError':         'Failed to save invoice. Please try again.',
 
   // ── Expenses ─────────────────────────────────────────────────────────────
   'exp.addExpense':  'Add Expense',
@@ -327,6 +330,9 @@ const az: Record<keyof typeof en, string> = {
   'inv.deleteMsg':         '{number} fakturası birdəfəlik silinəcək. Bu əməliyyat geri alına bilməz.',
   'inv.finalizeMsg':       '{number} fakturası Ödənilməmiş kimi işarələnəcək. Bundan sonra redaktə edilə bilməz.',
   'inv.loadingInvoices':   'Fakturalar yüklənir…',
+  'inv.savedOk':           'Faktura uğurla yaradıldı.',
+  'inv.updatedOk':         'Faktura uğurla yeniləndi.',
+  'inv.saveError':         'Faktura saxlanılmadı. Yenidən cəhd edin.',
 
   // ── Expenses ─────────────────────────────────────────────────────────────
   'exp.addExpense':  'Xərc Əlavə Et',
