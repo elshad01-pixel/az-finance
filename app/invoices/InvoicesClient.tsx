@@ -267,16 +267,29 @@ export default function InvoicesClient() {
     setConfirm(null)
   }
 
+  function logSupabaseError(label: string, error: unknown) {
+    // PostgrestError properties are non-enumerable so plain console.error shows {}
+    if (error && typeof error === 'object') {
+      const e = error as Record<string, unknown>
+      console.error(
+        `${label} | message: ${e['message']} | code: ${e['code']} | details: ${e['details']} | hint: ${e['hint']}`,
+      )
+    } else {
+      console.error(label, error)
+    }
+  }
+
+  function errMsg(error: unknown, fallback: string): string {
+    if (error && typeof error === 'object') {
+      const msg = (error as Record<string, unknown>)['message']
+      if (typeof msg === 'string' && msg) return msg
+    }
+    return fallback
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      showToast(t('inv.saveError'), false)
-      setSaving(false)
-      return
-    }
 
     const storedItems = lineItems.map(({ description, quantity, unitPrice }) => ({
       description,
@@ -292,8 +305,8 @@ export default function InvoicesClient() {
         .select()
         .single()
       if (error || !data) {
-        console.error('[invoice update]', error)
-        showToast(t('inv.saveError'), false)
+        logSupabaseError('[invoice update]', error)
+        showToast(errMsg(error, t('inv.saveError')), false)
       } else {
         setInvoices(prev => prev.map(i => i.id === editingInvoice.id ? data as Invoice : i))
         showToast(t('inv.updatedOk'), true)
@@ -310,10 +323,10 @@ export default function InvoicesClient() {
       const lastNum = lastRow?.number ? (parseInt(lastRow.number.replace(/\D+/, '')) || 1000) : 1000
       const number = `INV-${lastNum + 1}`
 
-      const { data, error } = await supabase
+      // Insert without select — avoids PGRST116 if RLS has no SELECT policy
+      const { error: insertError } = await supabase
         .from('invoices')
         .insert({
-          user_id:    user.id,
           number,
           client:     clientName,
           date:       invoiceDate,
@@ -322,16 +335,35 @@ export default function InvoicesClient() {
           status:     'Draft',
           line_items: storedItems,
         })
-        .select()
-        .single()
-      if (error || !data) {
-        console.error('[invoice insert]', error)
-        showToast(t('inv.saveError'), false)
-      } else {
-        setInvoices(prev => [data as Invoice, ...prev])
-        showToast(t('inv.savedOk'), true)
-        closeModal()
+
+      if (insertError) {
+        logSupabaseError('[invoice insert]', insertError)
+        showToast(errMsg(insertError, t('inv.saveError')), false)
+        setSaving(false)
+        return
       }
+
+      // Fetch the newly inserted row separately so RLS SELECT policy doesn't affect the insert result
+      const { data: newRow, error: fetchError } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('number', number)
+        .single()
+
+      if (fetchError || !newRow) {
+        logSupabaseError('[invoice fetch-after-insert]', fetchError)
+        // Insert succeeded — reload full list so UI stays consistent
+        const { data: allRows } = await supabase
+          .from('invoices')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (allRows) setInvoices(allRows as Invoice[])
+      } else {
+        setInvoices(prev => [newRow as Invoice, ...prev])
+      }
+
+      showToast(t('inv.savedOk'), true)
+      closeModal()
     }
 
     setSaving(false)
