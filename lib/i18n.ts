@@ -264,6 +264,10 @@ const en = {
   'pay.otherAdditions':    'Other Add.',
   'pay.otherDeductions':   'Other Ded.',
   'pay.workingDays':       'Working Days',
+  'pay.workingDaysPay':    'Working Days Pay',
+  'pay.vacationPay':       'Vacation Pay',
+  'pay.sickDmsfNote':      'Paid by Social Insurance Fund',
+  'pay.limitedHistory':    '< 12 months employed — using current salary as basis',
   // pdf
   'pay.payslip':           'Payslip',
   'pay.downloadPayslip':   'Payslip PDF',
@@ -590,6 +594,10 @@ const az: Record<keyof typeof en, string> = {
   'pay.otherAdditions':    'Digər Əlavə',
   'pay.otherDeductions':   'Digər Tutulma',
   'pay.workingDays':       'İş Günləri',
+  'pay.workingDaysPay':    'İş Günü Maaşı',
+  'pay.vacationPay':       'Məzuniyyət Ödənişi',
+  'pay.sickDmsfNote':      'Ödəniş Sosial Sığorta Fondu tərəfindən',
+  'pay.limitedHistory':    '12 aydan az işləyib — cari maaş əsas götürülür',
   // pdf
   'pay.payslip':           'Maaş Vərəqəsi',
   'pay.downloadPayslip':   'Maaş Vərəqəsi PDF',

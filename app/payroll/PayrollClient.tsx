@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
-import { calcPayroll, type PayrollSector } from '@/lib/payroll'
+import { calcPayroll, calcGross, type PayrollSector, type GrossBreakdown, type PayrollResult } from '@/lib/payroll'
 import type { TranslationKey } from '@/lib/i18n'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -122,19 +122,16 @@ function workingDaysInMonth(year: number, month: number): number {
   return count
 }
 
-function calcAdjustedGross(
-  base: number, vacDays: number, sickDays: number,
-  otHours: number, bonus: number, otherAdd: number,
-  otherDed: number, wd: number,
-): number {
-  const daily  = base / wd
-  const hourly = daily / 8
-  return Math.max(0, base - daily * (vacDays + sickDays) + hourly * 1.5 * otHours + bonus + otherAdd - otherDed)
+function monthsSinceStart(startDate: string, year: number, month: number): number {
+  if (!startDate) return 0
+  const start = new Date(startDate)
+  return Math.max(0, (year - start.getFullYear()) * 12 + (month - 1) - start.getMonth())
 }
 
-function buildEntryPayload(emp: Employee, form: EntryForm, runId: number, wd: number) {
+function buildEntryPayload(emp: Employee, form: EntryForm, runId: number, wd: number, year: number, month: number) {
   const f   = { vac: num(form.vacation_days), sick: num(form.sick_days), ot: num(form.overtime_hours), bonus: num(form.bonus), add: num(form.other_additions), ded: num(form.other_deductions) }
-  const adj = calcAdjustedGross(emp.gross_salary, f.vac, f.sick, f.ot, f.bonus, f.add, f.ded, wd)
+  const ms  = monthsSinceStart(emp.start_date, year, month)
+  const { gross: adj } = calcGross(emp.gross_salary, f.vac, f.ot, f.bonus, f.add, f.ded, wd, ms >= 12)
   const tax = calcPayroll(adj, emp.payroll_sector, emp.is_main_workplace)
   return {
     run_id: runId, employee_id: emp.id,
@@ -446,25 +443,30 @@ export default function PayrollClient() {
   const activeEmployees = employees.filter(e => e.status === 'active')
 
   // ── Live-computed row (using local forms, not DB entries)
-  function liveCalc(emp: Employee) {
+  function liveCalc(emp: Employee): GrossBreakdown & PayrollResult {
     const f   = editForms[emp.id] ?? EMPTY_FORM()
-    const adj = calcAdjustedGross(
-      emp.gross_salary, num(f.vacation_days), num(f.sick_days),
-      num(f.overtime_hours), num(f.bonus), num(f.other_additions), num(f.other_deductions), wd,
+    const ms  = monthsSinceStart(emp.start_date, calcYear, calcMonth)
+    const breakdown = calcGross(
+      emp.gross_salary, num(f.vacation_days), num(f.overtime_hours),
+      num(f.bonus), num(f.other_additions), num(f.other_deductions),
+      wd, ms >= 12,
     )
-    return calcPayroll(adj, emp.payroll_sector, emp.is_main_workplace)
+    const tax = calcPayroll(breakdown.gross, emp.payroll_sector, emp.is_main_workplace)
+    return { ...breakdown, ...tax }
   }
 
   // ── Create a new run
   async function handleCreateRun() {
     setRunSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { showToast(t('pay.runError'), false); setRunSaving(false); return }
     const { data: run, error } = await supabase
-      .from('payroll_runs').insert({ month: calcMonth, year: calcYear })
+      .from('payroll_runs').insert({ user_id: user.id, month: calcMonth, year: calcYear })
       .select().single()
     if (error || !run) { showToast(t('pay.runError'), false); setRunSaving(false); return }
     const newRun = run as PayrollRun
     const payloads = activeEmployees.map(emp =>
-      buildEntryPayload(emp, EMPTY_FORM(), newRun.id, wd)
+      buildEntryPayload(emp, EMPTY_FORM(), newRun.id, wd, calcYear, calcMonth)
     )
     await supabase.from('payroll_entries').insert(payloads)
     const forms: Record<number, EntryForm> = {}
@@ -481,7 +483,7 @@ export default function PayrollClient() {
     if (!currentRun) return
     setRunSaving(true)
     const payloads = activeEmployees.map(emp =>
-      buildEntryPayload(emp, editForms[emp.id] ?? EMPTY_FORM(), currentRun.id, wd)
+      buildEntryPayload(emp, editForms[emp.id] ?? EMPTY_FORM(), currentRun.id, wd, calcYear, calcMonth)
     )
     const { error } = await supabase.from('payroll_entries').upsert(payloads, { onConflict: 'run_id,employee_id' })
     if (error) { showToast(t('pay.runError'), false); setRunSaving(false); return }
@@ -498,7 +500,7 @@ export default function PayrollClient() {
 
     // 1. Save all entries
     const payloads = activeEmployees.map(emp =>
-      buildEntryPayload(emp, editForms[emp.id] ?? EMPTY_FORM(), currentRun.id, wd)
+      buildEntryPayload(emp, editForms[emp.id] ?? EMPTY_FORM(), currentRun.id, wd, calcYear, calcMonth)
     )
     await supabase.from('payroll_entries').upsert(payloads, { onConflict: 'run_id,employee_id' })
 
@@ -808,7 +810,10 @@ export default function PayrollClient() {
                         <th className="text-left px-3 py-3 border-r border-gray-100">{t('pay.position')}</th>
                         <th className="text-right px-3 py-3 text-blue-600 border-r border-blue-100">{lang==='az'?'Əsas':'Base'}</th>
                         <th className="text-right px-3 py-3 text-violet-600">{t('pay.vacationDays')}</th>
-                        <th className="text-right px-3 py-3 text-violet-600">{t('pay.sickDays')}</th>
+                        <th className="text-right px-3 py-3 text-violet-600">
+                          {t('pay.sickDays')}
+                          <div className="text-[9px] font-normal text-amber-600 leading-tight">DSMF</div>
+                        </th>
                         <th className="text-right px-3 py-3 text-violet-600">{t('pay.overtimeHours')}</th>
                         <th className="text-right px-3 py-3 text-violet-600">{t('pay.bonus')}</th>
                         <th className="text-right px-3 py-3 text-violet-600">{t('pay.otherAdditions')}</th>
@@ -863,13 +868,36 @@ export default function PayrollClient() {
                             <td className="px-3 py-3 text-right font-semibold text-blue-700 tabular-nums text-xs border-r border-blue-100">
                               {n2(emp.gross_salary)}
                             </td>
-                            <td className="px-3 py-3 text-center">{numInput('vacation_days')}</td>
-                            <td className="px-3 py-3 text-center">{numInput('sick_days')}</td>
+                            <td className="px-3 py-3 text-center">
+                              {numInput('vacation_days')}
+                              {r.hasLimitedHistory && num(f.vacation_days) > 0 && (
+                                <div title={t('pay.limitedHistory')} className="text-[9px] text-amber-500 mt-0.5 cursor-help">⚠ &lt;12m</div>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              {numInput('sick_days')}
+                              {num(f.sick_days) > 0 && (
+                                <div className="text-[9px] text-amber-600 mt-0.5 leading-tight">DSMF</div>
+                              )}
+                            </td>
                             <td className="px-3 py-3 text-center">{numInput('overtime_hours')}</td>
                             <td className="px-3 py-3 text-center">{numInput('bonus')}</td>
                             <td className="px-3 py-3 text-center">{numInput('other_additions')}</td>
                             <td className="px-3 py-3 text-center border-r border-violet-100">{numInput('other_deductions')}</td>
-                            <td className="px-3 py-3 text-right font-bold text-blue-700 tabular-nums text-xs border-r border-blue-100">{n2(r.gross)}</td>
+                            <td className="px-3 py-3 text-right font-bold text-blue-700 tabular-nums text-xs border-r border-blue-100">
+                              {n2(r.gross)}
+                              {num(f.vacation_days) > 0 && (
+                                <div className="text-[9px] text-gray-400 font-normal mt-0.5 space-y-0.5">
+                                  <div>{lang==='az'?'İş':'Work'}: {n2(r.workingDaysPay)}</div>
+                                  <div>
+                                    {lang==='az'?'Məz':'Vac'}{' '}
+                                    ({r.vacationMethodUsed === 'floor'
+                                      ? (lang==='az'?'iş':'wd')
+                                      : r.vacationMethodUsed}): {n2(r.vacationPay)}
+                                  </div>
+                                </div>
+                              )}
+                            </td>
                             <td className="px-3 py-3 text-right text-gray-400 tabular-nums text-xs">{n2(r.pitDeduction)}</td>
                             <td className="px-3 py-3 text-right text-red-600 tabular-nums text-xs">{n2(r.pit)}</td>
                             <td className="px-3 py-3 text-right text-red-600 tabular-nums text-xs">{n2(r.empSocial)}</td>
