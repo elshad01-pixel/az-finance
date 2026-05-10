@@ -93,6 +93,11 @@ const en = {
   'inv.savedOk':           'Invoice created successfully.',
   'inv.updatedOk':         'Invoice updated successfully.',
   'inv.saveError':         'Failed to save invoice. Please try again.',
+  'inv.selectClient':      'Select a client…',
+  'inv.noClients':         'No clients found — please add a client first.',
+  'inv.goToClients':       'Go to Clients →',
+  'inv.addNewClient':      '+ Add New Client',
+  'inv.quickAddTitle':     'Quick Add Client',
 
   // ── Expenses ─────────────────────────────────────────────────────────────
   'exp.addExpense':  'Add Expense',
@@ -333,6 +338,11 @@ const az: Record<keyof typeof en, string> = {
   'inv.savedOk':           'Faktura uğurla yaradıldı.',
   'inv.updatedOk':         'Faktura uğurla yeniləndi.',
   'inv.saveError':         'Faktura saxlanılmadı. Yenidən cəhd edin.',
+  'inv.selectClient':      'Müştəri seçin…',
+  'inv.noClients':         'Müştəri tapılmadı — əvvəlcə müştəri əlavə edin.',
+  'inv.goToClients':       'Müştərilərə keç →',
+  'inv.addNewClient':      '+ Yeni Müştəri',
+  'inv.quickAddTitle':     'Müştəri Əlavə Et',
 
   // ── Expenses ─────────────────────────────────────────────────────────────
   'exp.addExpense':  'Xərc Əlavə Et',

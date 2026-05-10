@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
-import { useEffect } from 'react'
 import { useLanguage } from '@/lib/LanguageContext'
 import type { TranslationKey } from '@/lib/i18n'
 
@@ -19,15 +19,25 @@ interface StoredLineItem {
   unit_price:  number
 }
 
+interface Client {
+  id:      number
+  company: string
+  email:   string
+  address: string
+}
+
 interface Invoice {
-  id:         number
-  number:     string
-  client:     string
-  date:       string
-  due_date:   string
-  amount:     number
-  status:     Status
-  line_items: StoredLineItem[] | null
+  id:             number
+  number:         string
+  client:         string
+  client_id:      number | null
+  client_email:   string | null
+  client_address: string | null
+  date:           string
+  due_date:       string
+  amount:         number
+  status:         Status
+  line_items:     StoredLineItem[] | null
 }
 
 interface LineItem {
@@ -99,14 +109,25 @@ export default function InvoicesClient() {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('All')
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
 
+  // ── Clients list (for dropdown) ───────────────────────────────────────
+  const [clients, setClients]               = useState<Client[]>([])
+  const [clientsLoading, setClientsLoading] = useState(true)
+
   // ── Form modal ────────────────────────────────────────────────────────
-  const [showModal, setShowModal]           = useState(false)
-  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null)
-  const [clientName, setClientName]         = useState('')
-  const [invoiceDate, setInvoiceDate]       = useState('')
-  const [dueDate, setDueDate]               = useState('')
-  const [lineItems, setLineItems]           = useState<LineItem[]>([EMPTY_LINE()])
-  const [saving, setSaving]                 = useState(false)
+  const [showModal, setShowModal]               = useState(false)
+  const [editingInvoice, setEditingInvoice]     = useState<Invoice | null>(null)
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
+  const [clientEmail, setClientEmail]           = useState('')
+  const [clientAddress, setClientAddress]       = useState('')
+  const [invoiceDate, setInvoiceDate]           = useState('')
+  const [dueDate, setDueDate]                   = useState('')
+  const [lineItems, setLineItems]               = useState<LineItem[]>([EMPTY_LINE()])
+  const [saving, setSaving]                     = useState(false)
+
+  // ── Quick-add client inline form ──────────────────────────────────────
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [qaForm, setQaForm] = useState({ company: '', contact: '', email: '', phone: '', address: '' })
+  const [qaSaving, setQaSaving] = useState(false)
 
   // ── Actions menu ──────────────────────────────────────────────────────
   const [menu, setMenu] = useState<MenuState | null>(null)
@@ -128,11 +149,15 @@ export default function InvoicesClient() {
 
   // ── Fetch ─────────────────────────────────────────────────────────────
   useEffect(() => {
-    supabase
-      .from('invoices')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .then(({ data }) => { setInvoices((data as Invoice[]) ?? []); setLoading(false) })
+    Promise.all([
+      supabase.from('invoices').select('*').order('created_at', { ascending: false }),
+      supabase.from('clients').select('id, company, email, address').order('company'),
+    ]).then(([invRes, cliRes]) => {
+      setInvoices((invRes.data as Invoice[]) ?? [])
+      setClients((cliRes.data as Client[]) ?? [])
+      setLoading(false)
+      setClientsLoading(false)
+    })
   }, [])
 
   // ── Derived ───────────────────────────────────────────────────────────
@@ -167,9 +192,20 @@ export default function InvoicesClient() {
     setLineItems(prev => prev.map(l => l.id === id ? { ...l, [field]: val } : l))
   }
 
+  function selectClient(id: number) {
+    const c = clients.find(c => c.id === id)
+    if (!c) return
+    setSelectedClientId(id)
+    setClientEmail(c.email ?? '')
+    setClientAddress(c.address ?? '')
+  }
+
   function resetForm() {
-    setClientName(''); setInvoiceDate(''); setDueDate('')
+    setSelectedClientId(null); setClientEmail(''); setClientAddress('')
+    setInvoiceDate(''); setDueDate('')
     setLineItems([EMPTY_LINE()]); setEditingInvoice(null)
+    setShowQuickAdd(false)
+    setQaForm({ company: '', contact: '', email: '', phone: '', address: '' })
   }
 
   function closeModal() { setShowModal(false); resetForm() }
@@ -186,7 +222,19 @@ export default function InvoicesClient() {
   function handleEdit(inv: Invoice) {
     setMenu(null)
     setEditingInvoice(inv)
-    setClientName(inv.client)
+    // Pre-select client: by stored client_id, or fall back to matching by company name
+    if (inv.client_id) {
+      selectClient(inv.client_id)
+    } else {
+      const matched = clients.find(c => c.company === inv.client)
+      if (matched) {
+        selectClient(matched.id)
+      } else {
+        setSelectedClientId(null)
+        setClientEmail(inv.client_email ?? '')
+        setClientAddress(inv.client_address ?? '')
+      }
+    }
     setInvoiceDate(inv.date)
     setDueDate(inv.due_date)
     setLineItems(
@@ -210,12 +258,11 @@ export default function InvoicesClient() {
     setMenu(null)
     setDownloadingId(inv.id)
     try {
-      const [companyRes, taxRes, clientRes] = await Promise.all([
+      const [companyRes, taxRes] = await Promise.all([
         supabase.from('company_settings')
           .select('company_name, company_address, city, tax_id, phone, email, bank_name, bank_account, swift_code')
           .maybeSingle(),
         supabase.from('tax_settings').select('vat_registered').maybeSingle(),
-        supabase.from('clients').select('address, email').eq('company', inv.client).maybeSingle(),
       ])
       const cs = companyRes.data
       const { generateInvoicePDF } = await import('@/lib/generateInvoicePDF')
@@ -226,8 +273,8 @@ export default function InvoicesClient() {
           due_date:      inv.due_date,
           status:        inv.status,
           client:        inv.client,
-          clientAddress: clientRes.data?.address ?? '',
-          clientEmail:   clientRes.data?.email   ?? '',
+          clientAddress: inv.client_address ?? '',
+          clientEmail:   inv.client_email   ?? '',
           line_items:    inv.line_items ?? [],
           amount:        inv.amount,
         },
@@ -287,8 +334,34 @@ export default function InvoicesClient() {
     return fallback
   }
 
+  async function handleQuickAdd(e: React.FormEvent) {
+    e.preventDefault()
+    setQaSaving(true)
+    const { data, error } = await supabase
+      .from('clients')
+      .insert(qaForm)
+      .select('id, company, email, address')
+      .single()
+    if (!error && data) {
+      const newClient = data as Client
+      setClients(prev => [...prev, newClient].sort((a, b) => a.company.localeCompare(b.company)))
+      setSelectedClientId(newClient.id)
+      setClientEmail(newClient.email ?? '')
+      setClientAddress(newClient.address ?? '')
+      setShowQuickAdd(false)
+      setQaForm({ company: '', contact: '', email: '', phone: '', address: '' })
+    } else {
+      logSupabaseError('[quick-add client]', error)
+    }
+    setQaSaving(false)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!selectedClientId) return
+    const selectedClient = clients.find(c => c.id === selectedClientId)
+    if (!selectedClient) return
+
     setSaving(true)
 
     const storedItems = lineItems.map(({ description, quantity, unitPrice }) => ({
@@ -300,7 +373,16 @@ export default function InvoicesClient() {
     if (editingInvoice) {
       const { data, error } = await supabase
         .from('invoices')
-        .update({ client: clientName, date: invoiceDate, due_date: dueDate, amount: total, line_items: storedItems })
+        .update({
+          client:         selectedClient.company,
+          client_id:      selectedClientId,
+          client_email:   clientEmail,
+          client_address: clientAddress,
+          date:           invoiceDate,
+          due_date:       dueDate,
+          amount:         total,
+          line_items:     storedItems,
+        })
         .eq('id', editingInvoice.id)
         .select()
         .single()
@@ -328,12 +410,15 @@ export default function InvoicesClient() {
         .from('invoices')
         .insert({
           number,
-          client:     clientName,
-          date:       invoiceDate,
-          due_date:   dueDate,
-          amount:     total,
-          status:     'Draft',
-          line_items: storedItems,
+          client:         selectedClient.company,
+          client_id:      selectedClientId,
+          client_email:   clientEmail,
+          client_address: clientAddress,
+          date:           invoiceDate,
+          due_date:       dueDate,
+          amount:         total,
+          status:         'Draft',
+          line_items:     storedItems,
         })
 
       if (insertError) {
@@ -532,14 +617,156 @@ export default function InvoicesClient() {
             <form onSubmit={handleSubmit}>
               <div className="px-6 py-5 space-y-5">
 
+                {/* ── Client selector ── */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('inv.clientName')}</label>
-                  <input
-                    type="text" required value={clientName}
-                    onChange={e => setClientName(e.target.value)}
-                    placeholder="e.g. Baku Tech LLC"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                  />
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-sm font-medium text-gray-700">{t('inv.clientName')}</label>
+                    {!showQuickAdd && (
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickAdd(true)}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                      >
+                        {t('inv.addNewClient')}
+                      </button>
+                    )}
+                  </div>
+
+                  {clientsLoading ? (
+                    <div className="h-10 bg-gray-100 rounded-lg animate-pulse" />
+                  ) : clients.length === 0 ? (
+                    <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5">
+                      <p className="text-sm text-amber-800">{t('inv.noClients')}</p>
+                      <Link
+                        href="/clients"
+                        className="shrink-0 text-xs font-semibold text-amber-700 hover:text-amber-900 transition-colors"
+                      >
+                        {t('inv.goToClients')}
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <select
+                        required
+                        value={selectedClientId ?? ''}
+                        onChange={e => {
+                          const id = parseInt(e.target.value)
+                          if (!isNaN(id)) selectClient(id)
+                        }}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-8"
+                      >
+                        <option value="" disabled>{t('inv.selectClient')}</option>
+                        {clients.map(c => (
+                          <option key={c.id} value={c.id}>{c.company}</option>
+                        ))}
+                      </select>
+                      <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  )}
+
+                  {/* Auto-filled client details */}
+                  {selectedClientId && (clientEmail || clientAddress) && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {clientEmail && (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-md px-2 py-1">
+                          <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          {clientEmail}
+                        </span>
+                      )}
+                      {clientAddress && (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-md px-2 py-1">
+                          <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                          {clientAddress}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Quick-add client mini form */}
+                  {showQuickAdd && (
+                    <div className="mt-3 border border-blue-200 bg-blue-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-sm font-semibold text-blue-900">{t('inv.quickAddTitle')}</p>
+                        <button
+                          type="button"
+                          onClick={() => { setShowQuickAdd(false); setQaForm({ company: '', contact: '', email: '', phone: '', address: '' }) }}
+                          className="text-blue-400 hover:text-blue-600 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <input
+                          type="text" required={showQuickAdd}
+                          value={qaForm.company}
+                          onChange={e => setQaForm(p => ({ ...p, company: e.target.value }))}
+                          placeholder={`${t('cli.companyName')} *`}
+                          className="col-span-2 border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <input
+                          type="text"
+                          value={qaForm.contact}
+                          onChange={e => setQaForm(p => ({ ...p, contact: e.target.value }))}
+                          placeholder={t('cli.contactPerson')}
+                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <input
+                          type="text"
+                          value={qaForm.phone}
+                          onChange={e => setQaForm(p => ({ ...p, phone: e.target.value }))}
+                          placeholder={t('cli.phone')}
+                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <input
+                          type="email"
+                          value={qaForm.email}
+                          onChange={e => setQaForm(p => ({ ...p, email: e.target.value }))}
+                          placeholder={t('cli.email')}
+                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <input
+                          type="text"
+                          value={qaForm.address}
+                          onChange={e => setQaForm(p => ({ ...p, address: e.target.value }))}
+                          placeholder={t('cli.address')}
+                          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          disabled={!qaForm.company || qaSaving}
+                          onClick={handleQuickAdd}
+                          className="flex items-center gap-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2 rounded-lg transition-colors"
+                        >
+                          {qaSaving ? (
+                            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                            </svg>
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                          )}
+                          {t('cli.addClient')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -621,8 +848,8 @@ export default function InvoicesClient() {
                   className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors">
                   {t('common.cancel')}
                 </button>
-                <button type="submit" disabled={saving}
-                  className="px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors shadow-sm disabled:opacity-60">
+                <button type="submit" disabled={saving || !selectedClientId || clients.length === 0}
+                  className="px-5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
                   {saving ? t('common.saving') : editingInvoice ? t('common.saveChanges') : t('inv.createInvoice')}
                 </button>
               </div>
