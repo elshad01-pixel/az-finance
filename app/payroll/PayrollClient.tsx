@@ -1,15 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
 import { calcPayroll, type PayrollSector } from '@/lib/payroll'
 import type { TranslationKey } from '@/lib/i18n'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 type EmploymentType = 'full-time' | 'part-time' | 'contractor'
 type EmployeeStatus = 'active' | 'inactive'
+type RunStatus      = 'draft' | 'approved'
+type TabKey         = 'employees' | 'run' | 'history'
 
 interface Employee {
   id:                number
@@ -23,75 +27,364 @@ interface Employee {
   payroll_sector:    PayrollSector
 }
 
-// ── Constants ──────────────────────────────────────────────────────────────
+interface PayrollRun {
+  id:          number
+  month:       number
+  year:        number
+  status:      RunStatus
+  approved_at: string | null
+  expense_id:  number | null
+  created_at:  string
+}
+
+interface PayrollEntry {
+  id:                   number
+  run_id:               number
+  employee_id:          number
+  base_salary:          number
+  vacation_days:        number
+  sick_days:            number
+  overtime_hours:       number
+  bonus:                number
+  other_additions:      number
+  other_deductions:     number
+  adjusted_gross:       number
+  pit_deduction:        number
+  pit:                  number
+  emp_social:           number
+  emp_health:           number
+  emp_unemployment:     number
+  total_emp_deductions: number
+  net_salary:           number
+  emplr_social:         number
+  emplr_health:         number
+  emplr_unemployment:   number
+  total_employer_cost:  number
+  payroll_sector:       PayrollSector
+  is_main_workplace:    boolean
+}
+
+interface EntryForm {
+  vacation_days:    string
+  sick_days:        string
+  overtime_hours:   string
+  bonus:            string
+  other_additions:  string
+  other_deductions: string
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────────
 
 const EMPLOYMENT_TYPE_STYLES: Record<EmploymentType, string> = {
   'full-time':  'bg-blue-100   text-blue-700',
   'part-time':  'bg-purple-100 text-purple-700',
   'contractor': 'bg-amber-100  text-amber-700',
 }
-
 const SECTOR_STYLES: Record<PayrollSector, string> = {
   'private_non_oil': 'bg-green-100  text-green-700',
   'oil_gas_public':  'bg-orange-100 text-orange-700',
 }
 
-const MONTHS_EN = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
-]
-const MONTHS_AZ = [
-  'Yanvar','Fevral','Mart','Aprel','May','İyun',
-  'İyul','Avqust','Sentyabr','Oktyabr','Noyabr','Dekabr',
-]
+const MONTHS_EN = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const MONTHS_AZ = ['Yanvar','Fevral','Mart','Aprel','May','İyun','İyul','Avqust','Sentyabr','Oktyabr','Noyabr','Dekabr']
 
-const EMPTY_FORM = {
-  full_name:         '',
-  position:          '',
-  gross_salary:      '',
-  employment_type:   'full-time'      as EmploymentType,
-  status:            'active'         as EmployeeStatus,
-  start_date:        '',
-  is_main_workplace: true,
-  payroll_sector:    'private_non_oil' as PayrollSector,
+const EMPTY_EMP_FORM = {
+  full_name: '', position: '', gross_salary: '',
+  employment_type: 'full-time' as EmploymentType,
+  status: 'active' as EmployeeStatus,
+  start_date: '', is_main_workplace: true,
+  payroll_sector: 'private_non_oil' as PayrollSector,
 }
 
-// ── Formatters ─────────────────────────────────────────────────────────────
+const EMPTY_FORM = (): EntryForm => ({
+  vacation_days: '0', sick_days: '0', overtime_hours: '0',
+  bonus: '0', other_additions: '0', other_deductions: '0',
+})
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
   return `₼ ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
-
-function n2(n: number): string {
+function n2(n: number) {
   if (n === 0) return '—'
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
+function num(s: string) { return Math.max(0, parseFloat(s) || 0) }
 
-// ── Component ──────────────────────────────────────────────────────────────
+function workingDaysInMonth(year: number, month: number): number {
+  let count = 0
+  const last = new Date(year, month, 0).getDate()
+  for (let d = 1; d <= last; d++) {
+    const dow = new Date(year, month - 1, d).getDay()
+    if (dow !== 0 && dow !== 6) count++
+  }
+  return count
+}
+
+function calcAdjustedGross(
+  base: number, vacDays: number, sickDays: number,
+  otHours: number, bonus: number, otherAdd: number,
+  otherDed: number, wd: number,
+): number {
+  const daily  = base / wd
+  const hourly = daily / 8
+  return Math.max(0, base - daily * (vacDays + sickDays) + hourly * 1.5 * otHours + bonus + otherAdd - otherDed)
+}
+
+function buildEntryPayload(emp: Employee, form: EntryForm, runId: number, wd: number) {
+  const f   = { vac: num(form.vacation_days), sick: num(form.sick_days), ot: num(form.overtime_hours), bonus: num(form.bonus), add: num(form.other_additions), ded: num(form.other_deductions) }
+  const adj = calcAdjustedGross(emp.gross_salary, f.vac, f.sick, f.ot, f.bonus, f.add, f.ded, wd)
+  const tax = calcPayroll(adj, emp.payroll_sector, emp.is_main_workplace)
+  return {
+    run_id: runId, employee_id: emp.id,
+    base_salary: emp.gross_salary,
+    vacation_days: f.vac, sick_days: f.sick, overtime_hours: f.ot,
+    bonus: f.bonus, other_additions: f.add, other_deductions: f.ded,
+    adjusted_gross:       tax.gross,
+    pit_deduction:        tax.pitDeduction,
+    pit:                  tax.pit,
+    emp_social:           tax.empSocial,
+    emp_health:           tax.empHealth,
+    emp_unemployment:     tax.empUnemployment,
+    total_emp_deductions: tax.totalEmpDeductions,
+    net_salary:           tax.netSalary,
+    emplr_social:         tax.emplrSocial,
+    emplr_health:         tax.emplrHealth,
+    emplr_unemployment:   tax.emplrUnemployment,
+    total_employer_cost:  tax.totalEmployerCost,
+    payroll_sector:       emp.payroll_sector,
+    is_main_workplace:    emp.is_main_workplace,
+  }
+}
+
+// ── PDF helpers ────────────────────────────────────────────────────────────────
+
+function fmtPdf(n: number) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function generatePayslipPDF(
+  entry: PayrollEntry, emp: Employee,
+  monthName: string, year: number, lang: string,
+) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const blue = [30, 64, 175] as [number,number,number]
+  const gray = [107, 114, 128] as [number,number,number]
+
+  doc.setFillColor(...blue)
+  doc.rect(0, 0, 210, 28, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(18)
+  doc.setTextColor(255, 255, 255)
+  doc.text('Az', 14, 17)
+  doc.setTextColor(147, 197, 253)
+  doc.text('Finance', 27, 17)
+  doc.setFontSize(11)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(255, 255, 255)
+  doc.text(lang === 'az' ? 'MAAŞ VƏRƏQƏSİ' : 'PAYSLIP', 150, 12)
+  doc.setFontSize(9)
+  doc.text(`${monthName} ${year}`, 150, 19)
+
+  doc.setTextColor(0, 0, 0)
+  doc.setFontSize(12)
+  doc.setFont('helvetica', 'bold')
+  doc.text(emp.full_name, 14, 38)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(...gray)
+  doc.text(emp.position, 14, 44)
+  doc.text(emp.payroll_sector === 'private_non_oil'
+    ? (lang === 'az' ? 'Özəl Sektor' : 'Private Sector')
+    : (lang === 'az' ? 'Neft/Dövlət' : 'Oil/Gas & Public'), 14, 50)
+
+  const row = (label: string, value: string, y: number, bold = false, color?: [number,number,number]) => {
+    doc.setFont('helvetica', bold ? 'bold' : 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(...(color ?? ([33,33,33] as [number,number,number])))
+    doc.text(label, 14, y)
+    doc.text(value, 196, y, { align: 'right' })
+  }
+  const section = (title: string, y: number) => {
+    doc.setFillColor(243, 244, 246)
+    doc.rect(10, y - 5, 190, 7, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...blue)
+    doc.text(title.toUpperCase(), 14, y)
+    return y + 6
+  }
+  const line = (y: number) => {
+    doc.setDrawColor(229, 231, 235)
+    doc.line(10, y, 200, y)
+  }
+
+  let y = 62
+  y = section(lang === 'az' ? 'GƏLİRLƏR' : 'EARNINGS', y)
+  row(lang === 'az' ? 'Əsas Maaş' : 'Base Salary',              `₼ ${fmtPdf(entry.base_salary)}`, y); y+=7
+  if (entry.vacation_days > 0)
+    row(lang === 'az' ? 'Məzuniyyət Tutulması' : 'Vacation Deduction',
+      `- ₼ ${fmtPdf((entry.base_salary / workingDaysInMonth(year, entry.run_id)) * entry.vacation_days)}`, y, false, [220,38,38] as [number,number,number]); y+=7
+  if (entry.sick_days > 0)
+    row(lang === 'az' ? 'Xəstəlik Tutulması' : 'Sick Leave Deduction',
+      `- ₼ ${fmtPdf((entry.base_salary / workingDaysInMonth(year, entry.run_id)) * entry.sick_days)}`, y, false, [220,38,38] as [number,number,number]); y+=7
+  if (entry.overtime_hours > 0)
+    row(lang === 'az' ? 'İZ Mükafatı' : 'Overtime Pay',
+      `+ ₼ ${fmtPdf((entry.base_salary / (workingDaysInMonth(year, entry.run_id)*8)) * 1.5 * entry.overtime_hours)}`, y, false, [22,163,74] as [number,number,number]); y+=7
+  if (entry.bonus > 0) row(lang === 'az' ? 'Bonus' : 'Bonus', `+ ₼ ${fmtPdf(entry.bonus)}`, y, false, [22,163,74] as [number,number,number]); if (entry.bonus > 0) y+=7
+  if (entry.other_additions > 0) row(lang === 'az' ? 'Digər Əlavələr' : 'Other Additions', `+ ₼ ${fmtPdf(entry.other_additions)}`, y, false, [22,163,74] as [number,number,number]); if (entry.other_additions > 0) y+=7
+  if (entry.other_deductions > 0) row(lang === 'az' ? 'Digər Tutulmalar' : 'Other Deductions', `- ₼ ${fmtPdf(entry.other_deductions)}`, y, false, [220,38,38] as [number,number,number]); if (entry.other_deductions > 0) y+=7
+  line(y); y+=4
+  row(lang === 'az' ? 'DÜZƏLDILMIŞ BRÜT' : 'ADJUSTED GROSS', `₼ ${fmtPdf(entry.adjusted_gross)}`, y, true, blue); y+=10
+
+  y = section(lang === 'az' ? 'TUTULMALAR' : 'DEDUCTIONS', y); y+=2
+  if (entry.pit_deduction > 0) { row(lang === 'az' ? 'GV Güzəşti (azad)' : 'PIT Deduction (exempt)', `₼ ${fmtPdf(entry.pit_deduction)}`, y, false, gray); y+=7 }
+  row(lang === 'az' ? 'Gəlir Vergisi (GV)' : 'Income Tax (PIT)', `- ₼ ${fmtPdf(entry.pit)}`, y, false, [220,38,38] as [number,number,number]); y+=7
+  row(lang === 'az' ? 'Sosial Sığorta (İşçi)' : 'Social Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_social)}`, y, false, [220,38,38] as [number,number,number]); y+=7
+  if (entry.emp_health > 0) { row(lang === 'az' ? 'Sağlamlıq Sığortası (İşçi)' : 'Health Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_health)}`, y, false, [220,38,38] as [number,number,number]); y+=7 }
+  if (entry.emp_unemployment > 0) { row(lang === 'az' ? 'İşsizlik Sığortası (İşçi)' : 'Unemployment Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_unemployment)}`, y, false, [220,38,38] as [number,number,number]); y+=7 }
+  line(y); y+=4
+  row(lang === 'az' ? 'CƏMİ TUTULMALAR' : 'TOTAL DEDUCTIONS', `- ₼ ${fmtPdf(entry.total_emp_deductions)}`, y, true, [220,38,38] as [number,number,number]); y+=8
+
+  doc.setFillColor(220, 252, 231)
+  doc.rect(10, y-5, 190, 10, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(11)
+  doc.setTextColor(21, 128, 61)
+  doc.text(lang === 'az' ? 'ƏLƏ KEÇƏN MƏBLƏĞ' : 'NET SALARY', 14, y+1)
+  doc.text(`₼ ${fmtPdf(entry.net_salary)}`, 196, y+1, { align: 'right' })
+  y += 14
+
+  y = section(lang === 'az' ? 'İŞƏGÖTÜRƏN XƏRCLƏRİ' : 'EMPLOYER COSTS', y); y+=2
+  row(lang === 'az' ? 'Sosial Sığorta (İşv.)' : 'Social Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_social)}`, y); y+=7
+  if (entry.emplr_health > 0) { row(lang === 'az' ? 'Sağlamlıq Sığortası (İşv.)' : 'Health Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_health)}`, y); y+=7 }
+  if (entry.emplr_unemployment > 0) { row(lang === 'az' ? 'İşsizlik Sığortası (İşv.)' : 'Unemployment Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_unemployment)}`, y); y+=7 }
+  line(y); y+=4
+  row(lang === 'az' ? 'ÜMUMİ İŞƏGÖTÜRƏN XƏRCİ' : 'TOTAL EMPLOYER COST', `₼ ${fmtPdf(entry.total_employer_cost)}`, y, true, [234,88,12] as [number,number,number]); y+=12
+
+  doc.setFontSize(7)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(...gray)
+  doc.text('AzFinance · Generated on ' + new Date().toLocaleDateString(), 14, 280)
+  doc.text(`${lang === 'az' ? 'Dövr' : 'Period'}: ${monthName} ${year}`, 196, 280, { align: 'right' })
+
+  doc.save(`payslip_${emp.full_name.replace(/\s+/g,'_')}_${year}_${String(entry.run_id).padStart(2,'0')}.pdf`)
+}
+
+function generateRunPDF(
+  entries: PayrollEntry[], empMap: Map<number, Employee>,
+  monthName: string, year: number, lang: string,
+) {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const blue = [30, 64, 175] as [number,number,number]
+
+  doc.setFillColor(...blue)
+  doc.rect(0, 0, 297, 20, 'F')
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(14)
+  doc.setTextColor(255, 255, 255)
+  doc.text('AzFinance', 10, 13)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.text((lang === 'az' ? 'Əmək Haqqı Hesabatı' : 'Payroll Report') + ` — ${monthName} ${year}`, 80, 13)
+
+  const totals = entries.reduce((a, e) => ({
+    gross: a.gross + e.adjusted_gross,
+    pit:   a.pit   + e.pit,
+    ded:   a.ded   + e.total_emp_deductions,
+    net:   a.net   + e.net_salary,
+    cost:  a.cost  + e.total_employer_cost,
+  }), { gross: 0, pit: 0, ded: 0, net: 0, cost: 0 })
+
+  autoTable(doc, {
+    startY: 28,
+    head: [[
+      lang==='az'?'Ad Soyad':'Employee',
+      lang==='az'?'Vəzifə':'Position',
+      lang==='az'?'Brüt':'Gross',
+      lang==='az'?'GV Güzəşti':'PIT Ded.',
+      'PIT',
+      lang==='az'?'İşçi Sos.':'Emp. Soc.',
+      lang==='az'?'İşçi Səh.':'Emp. Hlth.',
+      lang==='az'?'İşçi İşs.':'Emp. Unemp.',
+      lang==='az'?'Cəmi Tutulma':'Total Ded.',
+      lang==='az'?'Ələ Keçən':'Net Salary',
+      lang==='az'?'İşv. Sos.':'Empl. Soc.',
+      lang==='az'?'İşv. Səh.':'Empl. Hlth.',
+      lang==='az'?'İşv. İşs.':'Empl. Unemp.',
+      lang==='az'?'Ümumi Xərc':'Total Cost',
+    ]],
+    body: [
+      ...entries.map(e => {
+        const emp = empMap.get(e.employee_id)
+        return [
+          emp?.full_name ?? '',
+          emp?.position  ?? '',
+          fmtPdf(e.adjusted_gross),
+          fmtPdf(e.pit_deduction),
+          fmtPdf(e.pit),
+          fmtPdf(e.emp_social),
+          fmtPdf(e.emp_health),
+          fmtPdf(e.emp_unemployment),
+          fmtPdf(e.total_emp_deductions),
+          fmtPdf(e.net_salary),
+          fmtPdf(e.emplr_social),
+          fmtPdf(e.emplr_health),
+          fmtPdf(e.emplr_unemployment),
+          fmtPdf(e.total_employer_cost),
+        ]
+      }),
+      [
+        lang==='az'?'CƏMİ':'TOTAL', '',
+        fmtPdf(totals.gross), '', fmtPdf(totals.pit), '', '', '',
+        fmtPdf(totals.ded), fmtPdf(totals.net), '', '', '',
+        fmtPdf(totals.cost),
+      ],
+    ],
+    headStyles:  { fillColor: blue, fontSize: 7, halign: 'right' },
+    bodyStyles:  { fontSize: 7, halign: 'right' },
+    columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' } },
+    footStyles:  { fillColor: [243,244,246], fontStyle: 'bold', fontSize: 7 },
+  })
+
+  doc.save(`payroll_${year}_${String(entries[0]?.run_id ?? 0).padStart(2,'0')}.pdf`)
+}
+
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export default function PayrollClient() {
   const { t, lang } = useLanguage()
   const months = lang === 'az' ? MONTHS_AZ : MONTHS_EN
+  const now    = new Date()
 
-  // ── Data ──────────────────────────────────────────────────────────────
+  // ── Shared data
   const [employees, setEmployees] = useState<Employee[]>([])
-  const [loading, setLoading]     = useState(true)
+  const [loading,   setLoading]   = useState(true)
 
-  // ── Tabs ──────────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<'employees' | 'calculator'>('employees')
+  // ── Tabs
+  const [tab, setTab] = useState<TabKey>('employees')
 
-  // ── Employee modal ────────────────────────────────────────────────────
-  const [showModal, setShowModal] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm]           = useState(EMPTY_FORM)
-  const [saving, setSaving]       = useState(false)
+  // ── Employee modal
+  const [showEmpModal, setShowEmpModal] = useState(false)
+  const [editingEmpId, setEditingEmpId] = useState<number | null>(null)
+  const [empForm,      setEmpForm]      = useState(EMPTY_EMP_FORM)
+  const [empSaving,    setEmpSaving]    = useState(false)
 
-  // ── Calculator period ─────────────────────────────────────────────────
-  const now = new Date()
-  const [calcMonth, setCalcMonth] = useState(now.getMonth() + 1)
-  const [calcYear, setCalcYear]   = useState(now.getFullYear())
+  // ── Payroll Run tab
+  const [calcMonth,  setCalcMonth]  = useState(now.getMonth() + 1)
+  const [calcYear,   setCalcYear]   = useState(now.getFullYear())
+  const [currentRun, setCurrentRun] = useState<PayrollRun | null | undefined>(undefined) // undefined = not yet fetched
+  const [entries,    setEntries]    = useState<PayrollEntry[]>([])
+  const [editForms,  setEditForms]  = useState<Record<number, EntryForm>>({})
+  const [runLoading, setRunLoading] = useState(false)
+  const [runSaving,  setRunSaving]  = useState(false)
 
-  // ── Toast ─────────────────────────────────────────────────────────────
+  // ── History tab
+  const [history,     setHistory]     = useState<PayrollRun[]>([])
+  const [histLoading, setHistLoading] = useState(false)
+
+  // ── Toast
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
 
   function showToast(msg: string, ok: boolean) {
@@ -99,114 +392,200 @@ export default function PayrollClient() {
     setTimeout(() => setToast(null), 4000)
   }
 
-  // ── Fetch ─────────────────────────────────────────────────────────────
+  // ── Fetch employees
   useEffect(() => {
     supabase.from('employees').select('*').order('full_name')
       .then(({ data }) => { setEmployees((data as Employee[]) ?? []); setLoading(false) })
   }, [])
 
-  // ── Form helpers ──────────────────────────────────────────────────────
-  function field<K extends keyof typeof EMPTY_FORM>(key: K) {
+  // ── Fetch run when month/year or tab changes
+  const loadRun = useCallback(async (month: number, year: number) => {
+    setRunLoading(true)
+    setCurrentRun(undefined)
+    setEntries([])
+    const { data: run } = await supabase
+      .from('payroll_runs').select('*')
+      .eq('month', month).eq('year', year)
+      .maybeSingle()
+    if (!run) { setCurrentRun(null); setRunLoading(false); return }
+    setCurrentRun(run as PayrollRun)
+    const { data: ents } = await supabase
+      .from('payroll_entries').select('*')
+      .eq('run_id', run.id).order('employee_id')
+    const loadedEntries = (ents as PayrollEntry[]) ?? []
+    setEntries(loadedEntries)
+    const forms: Record<number, EntryForm> = {}
+    for (const e of loadedEntries) {
+      forms[e.employee_id] = {
+        vacation_days:    String(e.vacation_days),
+        sick_days:        String(e.sick_days),
+        overtime_hours:   String(e.overtime_hours),
+        bonus:            String(e.bonus),
+        other_additions:  String(e.other_additions),
+        other_deductions: String(e.other_deductions),
+      }
+    }
+    setEditForms(forms)
+    setRunLoading(false)
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'run') loadRun(calcMonth, calcYear)
+  }, [tab, calcMonth, calcYear, loadRun])
+
+  // ── Fetch history
+  useEffect(() => {
+    if (tab !== 'history') return
+    setHistLoading(true)
+    supabase.from('payroll_runs').select('*').order('year', { ascending: false }).order('month', { ascending: false })
+      .then(({ data }) => { setHistory((data as PayrollRun[]) ?? []); setHistLoading(false) })
+  }, [tab])
+
+  // ── Working days for current period
+  const wd = workingDaysInMonth(calcYear, calcMonth)
+  const activeEmployees = employees.filter(e => e.status === 'active')
+
+  // ── Live-computed row (using local forms, not DB entries)
+  function liveCalc(emp: Employee) {
+    const f   = editForms[emp.id] ?? EMPTY_FORM()
+    const adj = calcAdjustedGross(
+      emp.gross_salary, num(f.vacation_days), num(f.sick_days),
+      num(f.overtime_hours), num(f.bonus), num(f.other_additions), num(f.other_deductions), wd,
+    )
+    return calcPayroll(adj, emp.payroll_sector, emp.is_main_workplace)
+  }
+
+  // ── Create a new run
+  async function handleCreateRun() {
+    setRunSaving(true)
+    const { data: run, error } = await supabase
+      .from('payroll_runs').insert({ month: calcMonth, year: calcYear })
+      .select().single()
+    if (error || !run) { showToast(t('pay.runError'), false); setRunSaving(false); return }
+    const newRun = run as PayrollRun
+    const payloads = activeEmployees.map(emp =>
+      buildEntryPayload(emp, EMPTY_FORM(), newRun.id, wd)
+    )
+    await supabase.from('payroll_entries').insert(payloads)
+    const forms: Record<number, EntryForm> = {}
+    for (const emp of activeEmployees) forms[emp.id] = EMPTY_FORM()
+    setCurrentRun(newRun)
+    setEntries([])
+    setEditForms(forms)
+    setRunSaving(false)
+    await loadRun(calcMonth, calcYear)
+  }
+
+  // ── Save draft
+  async function handleSaveDraft() {
+    if (!currentRun) return
+    setRunSaving(true)
+    const payloads = activeEmployees.map(emp =>
+      buildEntryPayload(emp, editForms[emp.id] ?? EMPTY_FORM(), currentRun.id, wd)
+    )
+    const { error } = await supabase.from('payroll_entries').upsert(payloads, { onConflict: 'run_id,employee_id' })
+    if (error) { showToast(t('pay.runError'), false); setRunSaving(false); return }
+    showToast(t('pay.savedDraftOk'), true)
+    setRunSaving(false)
+    await loadRun(calcMonth, calcYear)
+  }
+
+  // ── Approve payroll
+  async function handleApprove() {
+    if (!currentRun) return
+    if (!window.confirm(t('pay.approveConfirm'))) return
+    setRunSaving(true)
+
+    // 1. Save all entries
+    const payloads = activeEmployees.map(emp =>
+      buildEntryPayload(emp, editForms[emp.id] ?? EMPTY_FORM(), currentRun.id, wd)
+    )
+    await supabase.from('payroll_entries').upsert(payloads, { onConflict: 'run_id,employee_id' })
+
+    // 2. Compute total employer cost for the expense entry
+    const totalCost = payloads.reduce((s, p) => s + p.total_employer_cost, 0)
+    const expDate   = `${calcYear}-${String(calcMonth).padStart(2,'0')}-01`
+    const monthLabel = months[calcMonth - 1]
+    const { data: exp } = await supabase.from('expenses').insert({
+      date:        expDate,
+      description: `${lang === 'az' ? 'Əmək haqqı' : 'Payroll'} — ${monthLabel} ${calcYear}`,
+      category:    'Salaries',
+      subcategory: 'Full-time Staff',
+      amount:      parseFloat(totalCost.toFixed(2)),
+      is_recurring: false,
+    }).select().single()
+
+    // 3. Approve the run
+    await supabase.from('payroll_runs').update({
+      status: 'approved',
+      approved_at: new Date().toISOString(),
+      expense_id: exp?.id ?? null,
+    }).eq('id', currentRun.id)
+
+    showToast(t('pay.approvedOk'), true)
+    setRunSaving(false)
+    await loadRun(calcMonth, calcYear)
+  }
+
+  // ── Navigate to a historical run
+  function openHistoryRun(run: PayrollRun) {
+    setCalcMonth(run.month)
+    setCalcYear(run.year)
+    setTab('run')
+  }
+
+  // ── Employee CRUD helpers
+  function empField<K extends keyof typeof EMPTY_EMP_FORM>(key: K) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm(p => ({ ...p, [key]: e.target.value }))
+      setEmpForm(p => ({ ...p, [key]: e.target.value }))
   }
+  function closeEmpModal() { setShowEmpModal(false); setEmpForm(EMPTY_EMP_FORM); setEditingEmpId(null) }
 
-  function resetForm() { setForm(EMPTY_FORM); setEditingId(null) }
-  function closeModal() { setShowModal(false); resetForm() }
-
-  function openAdd() { resetForm(); setShowModal(true) }
-
-  function openEdit(emp: Employee) {
-    setEditingId(emp.id)
-    setForm({
-      full_name:         emp.full_name,
-      position:          emp.position,
-      gross_salary:      String(emp.gross_salary),
-      employment_type:   emp.employment_type,
-      status:            emp.status,
-      start_date:        emp.start_date,
-      is_main_workplace: emp.is_main_workplace,
-      payroll_sector:    emp.payroll_sector,
-    })
-    setShowModal(true)
-  }
-
-  // ── CRUD ──────────────────────────────────────────────────────────────
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleEmpSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setSaving(true)
+    setEmpSaving(true)
     const payload = {
-      full_name:         form.full_name,
-      position:          form.position,
-      gross_salary:      parseFloat(form.gross_salary) || 0,
-      employment_type:   form.employment_type,
-      status:            form.status,
-      start_date:        form.start_date,
-      is_main_workplace: form.is_main_workplace,
-      payroll_sector:    form.payroll_sector,
+      full_name: empForm.full_name, position: empForm.position,
+      gross_salary: parseFloat(empForm.gross_salary) || 0,
+      employment_type: empForm.employment_type, status: empForm.status,
+      start_date: empForm.start_date, is_main_workplace: empForm.is_main_workplace,
+      payroll_sector: empForm.payroll_sector,
     }
-
-    if (editingId !== null) {
-      const { data, error } = await supabase
-        .from('employees').update(payload).eq('id', editingId).select().single()
-      if (!error && data) {
-        setEmployees(prev => prev.map(e => e.id === editingId ? data as Employee : e))
-        showToast(t('pay.updatedOk'), true)
-        closeModal()
-      } else {
-        showToast(t('pay.saveError'), false)
-      }
+    if (editingEmpId !== null) {
+      const { data, error } = await supabase.from('employees').update(payload).eq('id', editingEmpId).select().single()
+      if (!error && data) { setEmployees(prev => prev.map(e => e.id === editingEmpId ? data as Employee : e)); showToast(t('pay.updatedOk'), true); closeEmpModal() }
+      else showToast(t('pay.saveError'), false)
     } else {
-      const { data, error } = await supabase
-        .from('employees').insert(payload).select().single()
-      if (!error && data) {
-        setEmployees(prev => [...prev, data as Employee].sort((a, b) => a.full_name.localeCompare(b.full_name)))
-        showToast(t('pay.savedOk'), true)
-        closeModal()
-      } else {
-        showToast(t('pay.saveError'), false)
-      }
+      const { data, error } = await supabase.from('employees').insert(payload).select().single()
+      if (!error && data) { setEmployees(prev => [...prev, data as Employee].sort((a,b)=>a.full_name.localeCompare(b.full_name))); showToast(t('pay.savedOk'), true); closeEmpModal() }
+      else showToast(t('pay.saveError'), false)
     }
-    setSaving(false)
+    setEmpSaving(false)
   }
 
-  async function handleDelete(emp: Employee) {
+  async function handleEmpDelete(emp: Employee) {
     if (!window.confirm(`Remove ${emp.full_name}?`)) return
     const { error } = await supabase.from('employees').delete().eq('id', emp.id)
     if (!error) setEmployees(prev => prev.filter(e => e.id !== emp.id))
   }
 
-  // ── Payroll calculation ───────────────────────────────────────────────
-  const activeEmployees = employees.filter(e => e.status === 'active')
-  const payrollRows = activeEmployees.map(emp => ({
-    emp,
-    r: calcPayroll(emp.gross_salary, emp.payroll_sector, emp.is_main_workplace),
-  }))
+  // ── Totals for run tab
+  const runTotals = activeEmployees.reduce((acc, emp) => {
+    const r = liveCalc(emp)
+    return {
+      gross: acc.gross + r.gross, pit: acc.pit + r.pit,
+      ded:   acc.ded  + r.totalEmpDeductions, net: acc.net + r.netSalary,
+      cost:  acc.cost + r.totalEmployerCost,
+    }
+  }, { gross: 0, pit: 0, ded: 0, net: 0, cost: 0 })
 
-  const totals = payrollRows.reduce(
-    (acc, { r }) => ({
-      gross:            acc.gross            + r.gross,
-      pit:              acc.pit              + r.pit,
-      empSocial:        acc.empSocial        + r.empSocial,
-      empHealth:        acc.empHealth        + r.empHealth,
-      empUnemployment:  acc.empUnemployment  + r.empUnemployment,
-      totalEmpDed:      acc.totalEmpDed      + r.totalEmpDeductions,
-      netSalary:        acc.netSalary        + r.netSalary,
-      emplrSocial:      acc.emplrSocial      + r.emplrSocial,
-      emplrHealth:      acc.emplrHealth      + r.emplrHealth,
-      emplrUnemployment:acc.emplrUnemployment + r.emplrUnemployment,
-      totalCost:        acc.totalCost        + r.totalEmployerCost,
-    }),
-    { gross:0, pit:0, empSocial:0, empHealth:0, empUnemployment:0,
-      totalEmpDed:0, netSalary:0, emplrSocial:0, emplrHealth:0,
-      emplrUnemployment:0, totalCost:0 },
-  )
+  // ── Render ─────────────────────────────────────────────────────────────────
 
-  // ── Render ────────────────────────────────────────────────────────────
+  const isApproved = currentRun?.status === 'approved'
+
   return (
     <div>
-
-      {/* Page header */}
+      {/* Header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">{t('nav.payroll')}</h2>
@@ -216,10 +595,8 @@ export default function PayrollClient() {
           </p>
         </div>
         {tab === 'employees' && (
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm"
-          >
+          <button onClick={() => { setEmpForm(EMPTY_EMP_FORM); setEditingEmpId(null); setShowEmpModal(true) }}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
@@ -230,41 +607,29 @@ export default function PayrollClient() {
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-white border border-gray-200 rounded-xl p-1 w-fit shadow-sm">
-        {(['employees', 'calculator'] as const).map(tabKey => (
-          <button
-            key={tabKey}
-            onClick={() => setTab(tabKey)}
+        {(['employees', 'run', 'history'] as TabKey[]).map(k => (
+          <button key={k} onClick={() => setTab(k)}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all ${
-              tab === tabKey
-                ? 'bg-blue-600 text-white shadow-sm'
-                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            {t(tabKey === 'employees' ? 'pay.employees' : 'pay.calculator')}
+              tab === k ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}>
+            {t(k === 'employees' ? 'pay.employees' : k === 'run' ? 'pay.payrollRun' : 'pay.history')}
           </button>
         ))}
       </div>
 
-      {/* ══ EMPLOYEES TAB ══════════════════════════════════════════════════ */}
+      {/* ══ EMPLOYEES TAB ══════════════════════════════════════════════════════ */}
       {tab === 'employees' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center py-20 text-sm text-gray-400">
-              {t('cli.loading')}
-            </div>
+            <div className="flex items-center justify-center py-20 text-sm text-gray-400">{t('cli.loading')}</div>
           ) : (
             <>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[750px]">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      {[
-                        t('pay.fullName'), t('pay.position'), t('pay.grossSalary'),
-                        t('pay.employmentType'), t('pay.sector'), t('pay.status'), '',
-                      ].map((h, i) => (
-                        <th key={i} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 last:w-24">
-                          {h}
-                        </th>
+                      {[t('pay.fullName'), t('pay.position'), t('pay.grossSalary'), t('pay.employmentType'), t('pay.sector'), t('pay.status'), ''].map((h, i) => (
+                        <th key={i} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 last:w-24">{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -273,14 +638,10 @@ export default function PayrollClient() {
                       <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
                         <td className="px-5 py-3.5">
                           <p className="text-sm font-semibold text-gray-900">{emp.full_name}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {t('pay.isMainWorkplace')}: {emp.is_main_workplace ? t('pay.yes') : t('pay.no')}
-                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">{t('pay.isMainWorkplace')}: {emp.is_main_workplace ? t('pay.yes') : t('pay.no')}</p>
                         </td>
                         <td className="px-5 py-3.5 text-sm text-gray-700">{emp.position}</td>
-                        <td className="px-5 py-3.5 text-sm font-semibold text-gray-900 tabular-nums">
-                          {fmt(emp.gross_salary)}
-                        </td>
+                        <td className="px-5 py-3.5 text-sm font-semibold text-gray-900 tabular-nums">{fmt(emp.gross_salary)}</td>
                         <td className="px-5 py-3.5">
                           <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${EMPLOYMENT_TYPE_STYLES[emp.employment_type]}`}>
                             {t(`pay.${emp.employment_type === 'full-time' ? 'fullTime' : emp.employment_type === 'part-time' ? 'partTime' : 'contractor'}` as TranslationKey)}
@@ -292,30 +653,20 @@ export default function PayrollClient() {
                           </span>
                         </td>
                         <td className="px-5 py-3.5">
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
-                            emp.status === 'active'
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-gray-100 text-gray-500'
-                          }`}>
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${emp.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${emp.status === 'active' ? 'bg-green-500' : 'bg-gray-400'}`} />
                             {t(emp.status === 'active' ? 'pay.active' : 'pay.inactive')}
                           </span>
                         </td>
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => openEdit(emp)}
-                              className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 transition-colors"
-                            >
+                            <button onClick={() => { setEditingEmpId(emp.id); setEmpForm({ full_name: emp.full_name, position: emp.position, gross_salary: String(emp.gross_salary), employment_type: emp.employment_type, status: emp.status, start_date: emp.start_date, is_main_workplace: emp.is_main_workplace, payroll_sector: emp.payroll_sector }); setShowEmpModal(true) }}
+                              className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 transition-colors">
                               {t('common.edit')}
                             </button>
-                            <button
-                              onClick={() => handleDelete(emp)}
-                              className="text-gray-300 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors"
-                            >
+                            <button onClick={() => handleEmpDelete(emp)} className="text-gray-300 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                               </svg>
                             </button>
                           </div>
@@ -325,370 +676,400 @@ export default function PayrollClient() {
                   </tbody>
                 </table>
               </div>
-
-              {employees.length === 0 && (
-                <div className="text-center py-16 text-gray-400 text-sm">
-                  {t('pay.noEmployees')}
-                </div>
-              )}
+              {employees.length === 0 && <div className="text-center py-16 text-gray-400 text-sm">{t('pay.noEmployees')}</div>}
             </>
           )}
         </div>
       )}
 
-      {/* ══ CALCULATOR TAB ══════════════════════════════════════════════════ */}
-      {tab === 'calculator' && (
+      {/* ══ PAYROLL RUN TAB ══════════════════════════════════════════════════ */}
+      {tab === 'run' && (
         <div>
-          {/* Period selector */}
-          <div className="flex items-center gap-3 mb-6">
+          {/* Period selector + status + action buttons */}
+          <div className="flex flex-wrap items-end gap-3 mb-6">
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                {t('pay.selectMonth')}
-              </label>
-              <select
-                value={calcMonth}
-                onChange={e => setCalcMonth(Number(e.target.value))}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {months.map((name, i) => (
-                  <option key={i+1} value={i+1}>{name}</option>
-                ))}
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{t('pay.selectMonth')}</label>
+              <select value={calcMonth} onChange={e => setCalcMonth(Number(e.target.value))} disabled={!!currentRun}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                {months.map((name, i) => <option key={i+1} value={i+1}>{name}</option>)}
               </select>
             </div>
             <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                {t('pay.year')}
-              </label>
-              <select
-                value={calcYear}
-                onChange={e => setCalcYear(Number(e.target.value))}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {[2023,2024,2025,2026,2027].map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{t('pay.year')}</label>
+              <select value={calcYear} onChange={e => setCalcYear(Number(e.target.value))} disabled={!!currentRun}
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                {[2023,2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            <div className="self-end mb-0.5 text-sm text-gray-500">
-              — {activeEmployees.length} {lang === 'az' ? 'aktiv işçi' : 'active employees'}
+            <div className="text-xs text-gray-400 self-end pb-2">
+              {wd} {lang === 'az' ? 'iş günü' : 'working days'}
+            </div>
+
+            {currentRun && (
+              <span className={`self-end mb-1 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
+                isApproved ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isApproved ? 'bg-green-500' : 'bg-amber-500'}`} />
+                {t(isApproved ? 'pay.runApproved' : 'pay.runDraft')}
+              </span>
+            )}
+
+            <div className="flex gap-2 ml-auto">
+              {currentRun && isApproved && entries.length > 0 && (
+                <button
+                  onClick={() => {
+                    const empMap = new Map(employees.map(e => [e.id, e]))
+                    generateRunPDF(entries, empMap, months[calcMonth-1], calcYear, lang)
+                  }}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  {t('pay.downloadRunPDF')}
+                </button>
+              )}
+              {currentRun && !isApproved && (
+                <>
+                  <button onClick={handleSaveDraft} disabled={runSaving}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50">
+                    {runSaving ? t('common.saving') : t('pay.saveDraft')}
+                  </button>
+                  <button onClick={handleApprove} disabled={runSaving}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors shadow-sm disabled:opacity-50">
+                    {t('pay.approvePayroll')}
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Summary cards */}
-          {payrollRows.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-              {[
-                { label: t('pay.totalGross'),        value: totals.gross,    border: 'border-l-blue-500',   bg: 'from-blue-50' },
-                { label: t('pay.totalNet'),           value: totals.netSalary, border: 'border-l-green-500', bg: 'from-green-50' },
-                { label: t('pay.totalEmployerCost'), value: totals.totalCost, border: 'border-l-orange-500', bg: 'from-orange-50' },
-              ].map(card => (
-                <div key={card.label} className={`bg-gradient-to-br ${card.bg} to-white border border-gray-100 border-l-4 ${card.border} rounded-xl p-5 shadow-sm`}>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{card.label}</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1.5 tabular-nums">{fmt(card.value)}</p>
-                </div>
-              ))}
+          {/* Loading state */}
+          {(runLoading || currentRun === undefined) && (
+            <div className="flex items-center justify-center py-20 text-sm text-gray-400">{t('common.loading')}</div>
+          )}
+
+          {/* No run — CTA */}
+          {!runLoading && currentRun === null && (
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm text-center py-20">
+              <p className="text-gray-500 text-sm mb-4">{t('pay.noRun')}</p>
+              <button onClick={handleCreateRun} disabled={runSaving || activeEmployees.length === 0}
+                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                {runSaving ? t('common.saving') : t('pay.createRun')}
+              </button>
+              {activeEmployees.length === 0 && (
+                <p className="text-xs text-amber-600 mt-3">{t('pay.noActiveEmployees')}</p>
+              )}
             </div>
           )}
 
-          {payrollRows.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm text-center py-16 text-gray-400 text-sm">
-              {t('pay.noActiveEmployees')}
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1280px] text-sm">
-                  {/* Column group headers */}
-                  <thead>
-                    <tr className="text-xs font-semibold uppercase tracking-wider border-b border-gray-100">
-                      <th colSpan={2} className="px-4 py-2.5 text-left text-gray-500 bg-gray-50 border-r border-gray-100">
-                        {t('pay.employees')}
-                      </th>
-                      <th className="px-4 py-2.5 text-right text-blue-700 bg-blue-50 border-r border-blue-100">
-                        {t('pay.grossSalary').replace(' (AZN)','')}
-                      </th>
-                      <th colSpan={6} className="px-4 py-2.5 text-center text-red-700 bg-red-50 border-r border-red-100">
-                        ← {lang === 'az' ? 'İşçi Tutulmaları' : 'Employee Deductions'} →
-                      </th>
-                      <th className="px-4 py-2.5 text-center text-green-700 bg-green-50 border-r border-green-100">
-                        {t('pay.netSalary')}
-                      </th>
-                      <th colSpan={4} className="px-4 py-2.5 text-center text-orange-700 bg-orange-50">
-                        ← {lang === 'az' ? 'İşəgötürən Xərcləri' : 'Employer Costs'} →
-                      </th>
-                    </tr>
-                    <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      <th className="text-left px-4 py-3 sticky left-0 bg-gray-50 z-10 border-r border-gray-100">{t('pay.fullName')}</th>
-                      <th className="text-left px-4 py-3 border-r border-gray-100">{t('pay.position')}</th>
-                      <th className="text-right px-4 py-3 text-blue-600 border-r border-blue-100">{lang === 'az' ? 'Brüt' : 'Gross'}</th>
-                      <th className="text-right px-4 py-3 text-red-500">{t('pay.pitDeduction')}</th>
-                      <th className="text-right px-4 py-3 text-red-500">{t('pay.pit')}</th>
-                      <th className="text-right px-4 py-3 text-red-500">{t('pay.empSocial')}</th>
-                      <th className="text-right px-4 py-3 text-red-500">{t('pay.empHealth')}</th>
-                      <th className="text-right px-4 py-3 text-red-500">{t('pay.empUnemployment')}</th>
-                      <th className="text-right px-4 py-3 font-bold text-red-700 border-r border-red-100">{t('pay.totalDeductions')}</th>
-                      <th className="text-right px-4 py-3 font-bold text-green-700 border-r border-green-100">{t('pay.netSalary')}</th>
-                      <th className="text-right px-4 py-3 text-orange-500">{t('pay.emplrSocial')}</th>
-                      <th className="text-right px-4 py-3 text-orange-500">{t('pay.emplrHealth')}</th>
-                      <th className="text-right px-4 py-3 text-orange-500">{t('pay.emplrUnemployment')}</th>
-                      <th className="text-right px-4 py-3 font-bold text-orange-700">{t('pay.totalCost')}</th>
-                    </tr>
-                  </thead>
+          {/* Run exists — summary cards + table */}
+          {!runLoading && currentRun && (
+            <>
+              {/* Summary cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+                {[
+                  { label: t('pay.totalGross'),        value: runTotals.gross, border: 'border-l-blue-500',   from: 'from-blue-50' },
+                  { label: t('pay.totalNet'),           value: runTotals.net,   border: 'border-l-green-500', from: 'from-green-50' },
+                  { label: t('pay.totalEmployerCost'), value: runTotals.cost,  border: 'border-l-orange-500', from: 'from-orange-50' },
+                ].map(c => (
+                  <div key={c.label} className={`bg-gradient-to-br ${c.from} to-white border border-gray-100 border-l-4 ${c.border} rounded-xl p-5 shadow-sm`}>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{c.label}</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-1.5 tabular-nums">{fmt(c.value)}</p>
+                  </div>
+                ))}
+              </div>
 
-                  <tbody className="divide-y divide-gray-50">
-                    {payrollRows.map(({ emp, r }) => (
-                      <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-4 py-3.5 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r border-gray-100">
-                          <p className="font-semibold text-gray-900 whitespace-nowrap">{emp.full_name}</p>
-                          <span className={`inline-block text-xs font-semibold px-1.5 py-0.5 rounded-full mt-0.5 ${SECTOR_STYLES[emp.payroll_sector]}`}>
-                            {emp.payroll_sector === 'private_non_oil'
-                              ? (lang === 'az' ? 'Özəl' : 'Private')
-                              : (lang === 'az' ? 'Neft/Dövlət' : 'Oil/Public')}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5 text-gray-600 whitespace-nowrap border-r border-gray-100">{emp.position}</td>
-                        <td className="px-4 py-3.5 text-right font-semibold text-blue-700 tabular-nums border-r border-blue-100">
-                          {n2(r.gross)}
-                        </td>
-                        <td className="px-4 py-3.5 text-right text-gray-500 tabular-nums">{n2(r.pitDeduction)}</td>
-                        <td className="px-4 py-3.5 text-right text-red-600 tabular-nums">{n2(r.pit)}</td>
-                        <td className="px-4 py-3.5 text-right text-red-600 tabular-nums">{n2(r.empSocial)}</td>
-                        <td className="px-4 py-3.5 text-right text-red-600 tabular-nums">{n2(r.empHealth)}</td>
-                        <td className="px-4 py-3.5 text-right text-red-600 tabular-nums">{n2(r.empUnemployment)}</td>
-                        <td className="px-4 py-3.5 text-right font-bold text-red-700 tabular-nums border-r border-red-100">
-                          {n2(r.totalEmpDeductions)}
-                        </td>
-                        <td className="px-4 py-3.5 text-right font-bold text-green-700 tabular-nums border-r border-green-100">
-                          {n2(r.netSalary)}
-                        </td>
-                        <td className="px-4 py-3.5 text-right text-orange-600 tabular-nums">{n2(r.emplrSocial)}</td>
-                        <td className="px-4 py-3.5 text-right text-orange-600 tabular-nums">{n2(r.emplrHealth)}</td>
-                        <td className="px-4 py-3.5 text-right text-orange-600 tabular-nums">{n2(r.emplrUnemployment)}</td>
-                        <td className="px-4 py-3.5 text-right font-bold text-orange-700 tabular-nums">
-                          {n2(r.totalEmployerCost)}
-                        </td>
+              {/* Editable / read-only run table */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[1400px] text-sm">
+                    <thead>
+                      <tr className="text-xs font-semibold uppercase tracking-wider border-b border-gray-100">
+                        <th colSpan={2} className="px-4 py-2.5 text-left text-gray-500 bg-gray-50 border-r border-gray-100">{t('pay.employees')}</th>
+                        <th className="px-3 py-2.5 text-right text-blue-700 bg-blue-50 border-r border-blue-100">{t('pay.baseSalary')}</th>
+                        <th colSpan={6} className="px-3 py-2.5 text-center text-violet-700 bg-violet-50 border-r border-violet-100">
+                          {lang === 'az' ? '← Düzəlişlər →' : '← Adjustments →'}
+                        </th>
+                        <th className="px-3 py-2.5 text-right text-blue-700 bg-blue-50 border-r border-blue-100">{t('pay.adjustedGross')}</th>
+                        <th colSpan={5} className="px-3 py-2.5 text-center text-red-700 bg-red-50 border-r border-red-100">
+                          {lang === 'az' ? '← İşçi Tutulmaları →' : '← Employee Deductions →'}
+                        </th>
+                        <th className="px-3 py-2.5 text-center text-green-700 bg-green-50 border-r border-green-100">{t('pay.netSalary')}</th>
+                        <th colSpan={4} className="px-3 py-2.5 text-center text-orange-700 bg-orange-50">
+                          {lang === 'az' ? '← İşəgötürən →' : '← Employer Costs →'}
+                        </th>
+                        <th className="px-2 py-2.5 bg-gray-50 border-l border-gray-100 w-20"></th>
                       </tr>
-                    ))}
-                  </tbody>
+                      <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        <th className="text-left px-4 py-3 sticky left-0 bg-gray-50 z-10 border-r border-gray-100">{t('pay.fullName')}</th>
+                        <th className="text-left px-3 py-3 border-r border-gray-100">{t('pay.position')}</th>
+                        <th className="text-right px-3 py-3 text-blue-600 border-r border-blue-100">{lang==='az'?'Əsas':'Base'}</th>
+                        <th className="text-right px-3 py-3 text-violet-600">{t('pay.vacationDays')}</th>
+                        <th className="text-right px-3 py-3 text-violet-600">{t('pay.sickDays')}</th>
+                        <th className="text-right px-3 py-3 text-violet-600">{t('pay.overtimeHours')}</th>
+                        <th className="text-right px-3 py-3 text-violet-600">{t('pay.bonus')}</th>
+                        <th className="text-right px-3 py-3 text-violet-600">{t('pay.otherAdditions')}</th>
+                        <th className="text-right px-3 py-3 text-violet-600 border-r border-violet-100">{t('pay.otherDeductions')}</th>
+                        <th className="text-right px-3 py-3 font-bold text-blue-700 border-r border-blue-100">{lang==='az'?'Adj. Brüt':'Adj. Gross'}</th>
+                        <th className="text-right px-3 py-3 text-gray-500">{t('pay.pitDeduction')}</th>
+                        <th className="text-right px-3 py-3 text-red-500">{t('pay.pit')}</th>
+                        <th className="text-right px-3 py-3 text-red-500">{t('pay.empSocial')}</th>
+                        <th className="text-right px-3 py-3 text-red-500">{t('pay.empHealth')}</th>
+                        <th className="text-right px-3 py-3 font-bold text-red-700 border-r border-red-100">{t('pay.totalDeductions')}</th>
+                        <th className="text-right px-3 py-3 font-bold text-green-700 border-r border-green-100">{t('pay.netSalary')}</th>
+                        <th className="text-right px-3 py-3 text-orange-500">{t('pay.emplrSocial')}</th>
+                        <th className="text-right px-3 py-3 text-orange-500">{t('pay.emplrHealth')}</th>
+                        <th className="text-right px-3 py-3 text-orange-500">{t('pay.emplrUnemployment')}</th>
+                        <th className="text-right px-3 py-3 font-bold text-orange-700">{t('pay.totalCost')}</th>
+                        <th className="px-2 py-3 border-l border-gray-100"></th>
+                      </tr>
+                    </thead>
 
-                  {/* Totals row */}
-                  <tfoot>
-                    <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold text-gray-900">
-                      <td colSpan={2} className="px-4 py-3.5 sticky left-0 bg-gray-50 border-r border-gray-100 text-sm">
-                        {lang === 'az' ? 'CƏMİ' : 'TOTAL'} ({payrollRows.length})
-                      </td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-blue-700 border-r border-blue-100">
-                        {n2(totals.gross)}
-                      </td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-gray-500">{n2(totals.pit > 0 ? 0 : 0)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-red-700">{n2(totals.pit)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-red-700">{n2(totals.empSocial)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-red-700">{n2(totals.empHealth)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-red-700">{n2(totals.empUnemployment)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-red-800 border-r border-red-100">
-                        {n2(totals.totalEmpDed)}
-                      </td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-green-800 border-r border-green-100">
-                        {n2(totals.netSalary)}
-                      </td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-orange-700">{n2(totals.emplrSocial)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-orange-700">{n2(totals.emplrHealth)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-orange-700">{n2(totals.emplrUnemployment)}</td>
-                      <td className="px-4 py-3.5 text-right tabular-nums text-orange-800">
-                        {n2(totals.totalCost)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    <tbody className="divide-y divide-gray-50">
+                      {activeEmployees.map(emp => {
+                        const f   = editForms[emp.id] ?? EMPTY_FORM()
+                        const r   = liveCalc(emp)
+                        const dbEntry = entries.find(e => e.employee_id === emp.id)
+
+                        function setField(key: keyof EntryForm, val: string) {
+                          setEditForms(prev => ({ ...prev, [emp.id]: { ...(prev[emp.id] ?? EMPTY_FORM()), [key]: val } }))
+                        }
+                        function numInput(key: keyof EntryForm, placeholder = '0') {
+                          return isApproved
+                            ? <span className="tabular-nums">{f[key]}</span>
+                            : (
+                              <input
+                                type="number" min="0" step="any"
+                                value={f[key]}
+                                onChange={e => setField(key, e.target.value)}
+                                placeholder={placeholder}
+                                className="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400 tabular-nums"
+                              />
+                            )
+                        }
+
+                        return (
+                          <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-4 py-3 sticky left-0 bg-white hover:bg-slate-50 z-10 border-r border-gray-100">
+                              <p className="font-semibold text-gray-900 whitespace-nowrap text-xs">{emp.full_name}</p>
+                              <span className={`inline-block text-xs px-1.5 py-0.5 rounded-full mt-0.5 ${SECTOR_STYLES[emp.payroll_sector]}`}>
+                                {emp.payroll_sector === 'private_non_oil' ? (lang==='az'?'Özəl':'Priv.') : (lang==='az'?'Neft':'Oil')}
+                              </span>
+                            </td>
+                            <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap border-r border-gray-100">{emp.position}</td>
+                            <td className="px-3 py-3 text-right font-semibold text-blue-700 tabular-nums text-xs border-r border-blue-100">
+                              {n2(emp.gross_salary)}
+                            </td>
+                            <td className="px-3 py-3 text-center">{numInput('vacation_days')}</td>
+                            <td className="px-3 py-3 text-center">{numInput('sick_days')}</td>
+                            <td className="px-3 py-3 text-center">{numInput('overtime_hours')}</td>
+                            <td className="px-3 py-3 text-center">{numInput('bonus')}</td>
+                            <td className="px-3 py-3 text-center">{numInput('other_additions')}</td>
+                            <td className="px-3 py-3 text-center border-r border-violet-100">{numInput('other_deductions')}</td>
+                            <td className="px-3 py-3 text-right font-bold text-blue-700 tabular-nums text-xs border-r border-blue-100">{n2(r.gross)}</td>
+                            <td className="px-3 py-3 text-right text-gray-400 tabular-nums text-xs">{n2(r.pitDeduction)}</td>
+                            <td className="px-3 py-3 text-right text-red-600 tabular-nums text-xs">{n2(r.pit)}</td>
+                            <td className="px-3 py-3 text-right text-red-600 tabular-nums text-xs">{n2(r.empSocial)}</td>
+                            <td className="px-3 py-3 text-right text-red-600 tabular-nums text-xs">{n2(r.empHealth)}</td>
+                            <td className="px-3 py-3 text-right font-bold text-red-700 tabular-nums text-xs border-r border-red-100">{n2(r.totalEmpDeductions)}</td>
+                            <td className="px-3 py-3 text-right font-bold text-green-700 tabular-nums text-xs border-r border-green-100">{n2(r.netSalary)}</td>
+                            <td className="px-3 py-3 text-right text-orange-600 tabular-nums text-xs">{n2(r.emplrSocial)}</td>
+                            <td className="px-3 py-3 text-right text-orange-600 tabular-nums text-xs">{n2(r.emplrHealth)}</td>
+                            <td className="px-3 py-3 text-right text-orange-600 tabular-nums text-xs">{n2(r.emplrUnemployment)}</td>
+                            <td className="px-3 py-3 text-right font-bold text-orange-700 tabular-nums text-xs">{n2(r.totalEmployerCost)}</td>
+                            <td className="px-2 py-3 border-l border-gray-100">
+                              {dbEntry && (
+                                <button
+                                  onClick={() => generatePayslipPDF(dbEntry, emp, months[calcMonth-1], calcYear, lang)}
+                                  title={t('pay.downloadPayslip')}
+                                  className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 transition-colors">
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                  </svg>
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+
+                    <tfoot>
+                      <tr className="bg-gray-50 border-t-2 border-gray-200 font-bold text-gray-900 text-xs">
+                        <td colSpan={2} className="px-4 py-3 sticky left-0 bg-gray-50 border-r border-gray-100">
+                          {lang === 'az' ? 'CƏMİ' : 'TOTAL'} ({activeEmployees.length})
+                        </td>
+                        <td className="px-3 py-3 text-right tabular-nums text-blue-700 border-r border-blue-100">
+                          {n2(activeEmployees.reduce((s,e)=>s+e.gross_salary,0))}
+                        </td>
+                        <td colSpan={6} className="border-r border-violet-100"></td>
+                        <td className="px-3 py-3 text-right tabular-nums text-blue-800 border-r border-blue-100">{n2(runTotals.gross)}</td>
+                        <td></td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-700">{n2(runTotals.pit)}</td>
+                        <td colSpan={2}></td>
+                        <td className="px-3 py-3 text-right tabular-nums text-red-800 border-r border-red-100">{n2(runTotals.ded)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-green-800 border-r border-green-100">{n2(runTotals.net)}</td>
+                        <td colSpan={3}></td>
+                        <td className="px-3 py-3 text-right tabular-nums text-orange-800">{n2(runTotals.cost)}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
-            </div>
+            </>
           )}
-
-          {/* Rate legend */}
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">
-                {t('pay.privateNonOil')}
-              </p>
-              <div className="text-xs text-gray-500 space-y-1 leading-relaxed">
-                <p><span className="font-semibold text-gray-700">PIT:</span> ≤2,500→3% · 2,500-8,000→₼75+10% · &gt;8,000→₼625+14%</p>
-                <p><span className="font-semibold text-gray-700">{lang==='az'?'İşçi Sos.:':'Emp. Social:'}</span> ≤200→3% · &gt;200→₼6+10%</p>
-                <p><span className="font-semibold text-gray-700">{lang==='az'?'İşv. Sos.:':'Empl. Social:'}</span> ≤200→22% · &gt;200→₼44+15%</p>
-                <p><span className="font-semibold text-gray-700">{lang==='az'?'Sağlamlıq:':'Health:'}</span> ≤2,500→2% · &gt;2,500→₼50+0.5% (hər tərəf)</p>
-                <p><span className="font-semibold text-gray-700">{lang==='az'?'İşsizlik:':'Unemp.:'}</span> 0.5% hər tərəf</p>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs font-bold text-orange-700 uppercase tracking-wider mb-2">
-                {t('pay.oilGasPublic')}
-              </p>
-              <div className="text-xs text-gray-500 space-y-1 leading-relaxed">
-                <p><span className="font-semibold text-gray-700">PIT:</span> ≤2,500→14% · &gt;2,500→₼350+25%</p>
-                <p><span className="font-semibold text-gray-700">{lang==='az'?'İşçi Sos.:':'Emp. Social:'}</span> 3%</p>
-                <p><span className="font-semibold text-gray-700">{lang==='az'?'İşv. Sos.:':'Empl. Social:'}</span> 22%</p>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
-      {/* ══ ADD / EDIT EMPLOYEE MODAL ══════════════════════════════════════ */}
-      {showModal && (
-        <div
-          className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-10 px-4"
-          onClick={e => { if (e.target === e.currentTarget) closeModal() }}
-        >
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+      {/* ══ HISTORY TAB ════════════════════════════════════════════════════════ */}
+      {tab === 'history' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          {histLoading ? (
+            <div className="flex items-center justify-center py-20 text-sm text-gray-400">{t('common.loading')}</div>
+          ) : history.length === 0 ? (
+            <div className="text-center py-16 text-gray-400 text-sm">{t('pay.noHistory')}</div>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  {[lang==='az'?'Dövr':'Period', t('common.status'), lang==='az'?'Təsdiq Tarixi':'Approved On', lang==='az'?'Yaradılma':'Created', ''].map((h,i) => (
+                    <th key={i} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 last:w-32">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {history.map(run => (
+                  <tr key={run.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-5 py-4">
+                      <p className="font-semibold text-gray-900">{months[run.month - 1]} {run.year}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                        run.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${run.status === 'approved' ? 'bg-green-500' : 'bg-amber-500'}`} />
+                        {t(run.status === 'approved' ? 'pay.runApproved' : 'pay.runDraft')}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-sm text-gray-500">
+                      {run.approved_at ? new Date(run.approved_at).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
+                    </td>
+                    <td className="px-5 py-4 text-sm text-gray-400">
+                      {new Date(run.created_at).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day:'2-digit', month:'short', year:'numeric' })}
+                    </td>
+                    <td className="px-5 py-4">
+                      <button onClick={() => openHistoryRun(run)}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors">
+                        {t('pay.viewRun')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
-            {/* Header */}
+      {/* ══ EMPLOYEE MODAL ════════════════════════════════════════════════════ */}
+      {showEmpModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-10 px-4"
+          onClick={e => { if (e.target === e.currentTarget) closeEmpModal() }}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">
-                  {editingId !== null ? t('pay.editEmployee') : t('pay.addEmployee')}
-                </h3>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {editingId !== null ? t('pay.updateDetails') : t('pay.fillDetails')}
-                </p>
-              </div>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {editingEmpId !== null ? t('pay.editEmployee') : t('pay.addEmployee')}
+              </h3>
+              <button onClick={closeEmpModal} className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleEmpSubmit}>
               <div className="px-6 py-5 space-y-4">
-
-                {/* Full Name + Position */}
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('pay.fullName')}</label>
+                  <input type="text" required value={empForm.full_name} onChange={empField('full_name')} placeholder="e.g. Elşad Əliyev"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('pay.fullName')}</label>
-                    <input
-                      type="text" required value={form.full_name} onChange={field('full_name')}
-                      placeholder="e.g. Elşad Əliyev"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    />
-                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('pay.position')}</label>
-                    <input
-                      type="text" required value={form.position} onChange={field('position')}
-                      placeholder="e.g. Manager"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    />
+                    <input type="text" required value={empForm.position} onChange={empField('position')} placeholder="e.g. Manager"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('pay.grossSalary')}</label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium select-none">₼</span>
-                      <input
-                        type="number" required min="0" step="0.01" value={form.gross_salary}
-                        onChange={field('gross_salary')}
-                        placeholder="0.00"
-                        className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium">₼</span>
+                      <input type="number" required min="0" step="0.01" value={empForm.gross_salary} onChange={empField('gross_salary')} placeholder="0.00"
+                        className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>
                 </div>
-
-                {/* Employment Type + Start Date */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('pay.employmentType')}</label>
-                    <div className="relative">
-                      <select
-                        value={form.employment_type} onChange={field('employment_type')}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-8"
-                      >
-                        <option value="full-time">{t('pay.fullTime')}</option>
-                        <option value="part-time">{t('pay.partTime')}</option>
-                        <option value="contractor">{t('pay.contractor')}</option>
-                      </select>
-                      <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
+                    <select value={empForm.employment_type} onChange={empField('employment_type')}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="full-time">{t('pay.fullTime')}</option>
+                      <option value="part-time">{t('pay.partTime')}</option>
+                      <option value="contractor">{t('pay.contractor')}</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('pay.startDate')}</label>
-                    <input
-                      type="date" required value={form.start_date} onChange={field('start_date')}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                    />
+                    <input type="date" required value={empForm.start_date} onChange={empField('start_date')}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
-
-                {/* Payroll Sector + Status (edit only) */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('pay.payrollSector')}</label>
-                    <div className="relative">
-                      <select
-                        value={form.payroll_sector} onChange={field('payroll_sector')}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-8"
-                      >
-                        <option value="private_non_oil">{t('pay.privateNonOil')}</option>
-                        <option value="oil_gas_public">{t('pay.oilGasPublic')}</option>
-                      </select>
-                      <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
+                    <select value={empForm.payroll_sector} onChange={empField('payroll_sector')}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="private_non_oil">{t('pay.privateNonOil')}</option>
+                      <option value="oil_gas_public">{t('pay.oilGasPublic')}</option>
+                    </select>
                   </div>
-                  {editingId !== null && (
+                  {editingEmpId !== null && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('pay.status')}</label>
-                      <div className="relative">
-                        <select
-                          value={form.status} onChange={field('status')}
-                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-8"
-                        >
-                          <option value="active">{t('pay.active')}</option>
-                          <option value="inactive">{t('pay.inactive')}</option>
-                        </select>
-                        <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
+                      <select value={empForm.status} onChange={empField('status')}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="active">{t('pay.active')}</option>
+                        <option value="inactive">{t('pay.inactive')}</option>
+                      </select>
                     </div>
                   )}
                 </div>
-
-                {/* Is Main Workplace toggle */}
                 <div className="bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-700">{t('pay.isMainWorkplace')}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {lang === 'az'
-                        ? 'Aylıq maaş ≤₼2,500 üçün ₼200 GV güzəşti tətbiq edilir'
-                        : 'AZN 200 PIT deduction applies if gross ≤ AZN 2,500'}
-                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">{lang==='az'?'₼200 GV güzəşti ≤₼2,500 üçün':'₼200 PIT deduction if gross ≤ ₼2,500'}</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setForm(p => ({ ...p, is_main_workplace: !p.is_main_workplace }))}
-                    className={`relative w-11 h-6 rounded-full transition-colors ${form.is_main_workplace ? 'bg-blue-600' : 'bg-gray-200'}`}
-                  >
-                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.is_main_workplace ? 'translate-x-5' : ''}`} />
+                  <button type="button" onClick={() => setEmpForm(p => ({ ...p, is_main_workplace: !p.is_main_workplace }))}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${empForm.is_main_workplace ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${empForm.is_main_workplace ? 'translate-x-5' : ''}`} />
                   </button>
                 </div>
-
               </div>
-
-              {/* Footer */}
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
-                <button type="button" onClick={closeModal}
+                <button type="button" onClick={closeEmpModal}
                   className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors">
                   {t('common.cancel')}
                 </button>
-                <button type="submit" disabled={saving}
+                <button type="submit" disabled={empSaving}
                   className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors shadow-sm disabled:opacity-60">
-                  {saving ? t('common.saving') : editingId !== null ? t('common.saveChanges') : t('pay.addEmployee')}
+                  {empSaving ? t('common.saving') : editingEmpId !== null ? t('common.saveChanges') : t('pay.addEmployee')}
                 </button>
               </div>
             </form>
-
           </div>
         </div>
       )}
@@ -698,20 +1079,13 @@ export default function PayrollClient() {
         <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium ${
           toast.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'
         }`}>
-          {toast.ok ? (
-            <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          )}
+          {toast.ok
+            ? <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            : <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          }
           {toast.msg}
         </div>
       )}
-
     </div>
   )
 }
