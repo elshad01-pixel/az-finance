@@ -168,153 +168,245 @@ function fmtPdf(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function generatePayslipPDF(
+async function loadRoboto(): Promise<{ reg: string; bold: string }> {
+  function bufToB64(buf: ArrayBuffer): string {
+    const bytes = new Uint8Array(buf)
+    const chunks: string[] = []
+    for (let i = 0; i < bytes.byteLength; i += 0x8000)
+      chunks.push(String.fromCharCode(...bytes.subarray(i, i + 0x8000)))
+    return btoa(chunks.join(''))
+  }
+  const [reg, bold] = await Promise.all([
+    fetch('/fonts/Roboto-Regular.ttf').then(r => r.arrayBuffer()).then(bufToB64),
+    fetch('/fonts/Roboto-Bold.ttf').then(r => r.arrayBuffer()).then(bufToB64),
+  ])
+  return { reg, bold }
+}
+
+function registerRoboto(doc: jsPDF, reg: string, bold: string) {
+  doc.addFileToVFS('Roboto-Regular.ttf', reg)
+  doc.addFileToVFS('Roboto-Bold.ttf',    bold)
+  doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal')
+  doc.addFont('Roboto-Bold.ttf',    'Roboto', 'bold')
+  doc.setFont('Roboto', 'normal')
+}
+
+async function generatePayslipPDF(
   entry: PayrollEntry, emp: Employee,
-  monthName: string, year: number, lang: string,
+  month: number, monthName: string, year: number, lang: string,
+  company: { company_name: string; tax_id: string } | null,
 ) {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
-  const blue = [30, 64, 175] as [number,number,number]
-  const gray = [107, 114, 128] as [number,number,number]
+  const fonts = await loadRoboto()
+  const doc   = new jsPDF({ unit: 'mm', format: 'a4' })
+  registerRoboto(doc, fonts.reg, fonts.bold)
 
+  const blue  = [30, 64, 175]  as [number,number,number]
+  const green = [21, 128, 61]  as [number,number,number]
+  const red   = [220, 38, 38]  as [number,number,number]
+  const gray  = [107, 114, 128] as [number,number,number]
+  const W = 210
+  const M = 14  // left/right margin
+
+  // ── Header band ───────────────────────────────────────────────────────────
+  const HEADER_H = 46
   doc.setFillColor(...blue)
-  doc.rect(0, 0, 210, 28, 'F')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(18)
+  doc.rect(0, 0, W, HEADER_H, 'F')
+
+  // Logo
+  doc.setFontSize(22)
+  doc.setFont('Roboto', 'bold')
   doc.setTextColor(255, 255, 255)
-  doc.text('Az', 14, 17)
+  doc.text('Az', M, 20)
+  const azW = doc.getTextWidth('Az')
   doc.setTextColor(147, 197, 253)
-  doc.text('Finance', 27, 17)
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(255, 255, 255)
-  doc.text(lang === 'az' ? 'MAAŞ VƏRƏQƏSİ' : 'PAYSLIP', 150, 12)
-  doc.setFontSize(9)
-  doc.text(`${monthName} ${year}`, 150, 19)
+  doc.text('Finance', M + azW, 20)
 
-  doc.setTextColor(0, 0, 0)
+  // Company name + VÖEN below logo
+  doc.setFontSize(8)
+  doc.setFont('Roboto', 'normal')
+  doc.setTextColor(147, 197, 253)
+  if (company?.company_name) {
+    doc.text(company.company_name, M, 28)
+    if (company.tax_id) doc.text(`VÖEN: ${company.tax_id}`, M, 34)
+  }
+
+  // Title right
   doc.setFontSize(12)
-  doc.setFont('helvetica', 'bold')
-  doc.text(emp.full_name, 14, 38)
-  doc.setFont('helvetica', 'normal')
+  doc.setFont('Roboto', 'bold')
+  doc.setTextColor(255, 255, 255)
+  doc.text(lang === 'az' ? 'MAAŞ VƏRƏQƏSİ' : 'PAYSLIP', W - M, 18, { align: 'right' })
   doc.setFontSize(9)
-  doc.setTextColor(...gray)
-  doc.text(emp.position, 14, 44)
-  doc.text(emp.payroll_sector === 'private_non_oil'
-    ? (lang === 'az' ? 'Özəl Sektor' : 'Private Sector')
-    : (lang === 'az' ? 'Neft/Dövlət' : 'Oil/Gas & Public'), 14, 50)
+  doc.setFont('Roboto', 'normal')
+  doc.setTextColor(147, 197, 253)
+  doc.text(`${monthName} ${year}`, W - M, 25, { align: 'right' })
 
+  // ── Employee info band ────────────────────────────────────────────────────
+  doc.setFillColor(248, 250, 252)
+  doc.rect(0, HEADER_H, W, 30, 'F')
+
+  doc.setFontSize(13)
+  doc.setFont('Roboto', 'bold')
+  doc.setTextColor(17, 24, 39)
+  doc.text(emp.full_name, M, HEADER_H + 12)
+
+  doc.setFontSize(9)
+  doc.setFont('Roboto', 'normal')
+  doc.setTextColor(...gray)
+  doc.text(emp.position, M, HEADER_H + 20)
+  doc.text(
+    emp.payroll_sector === 'private_non_oil'
+      ? (lang === 'az' ? 'Özəl Sektor' : 'Private Sector')
+      : (lang === 'az' ? 'Neft/Dövlət Sektoru' : 'Oil/Gas & Public'),
+    M, HEADER_H + 27,
+  )
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const row = (label: string, value: string, y: number, bold = false, color?: [number,number,number]) => {
-    doc.setFont('helvetica', bold ? 'bold' : 'normal')
+    doc.setFont('Roboto', bold ? 'bold' : 'normal')
     doc.setFontSize(9)
-    doc.setTextColor(...(color ?? ([33,33,33] as [number,number,number])))
-    doc.text(label, 14, y)
-    doc.text(value, 196, y, { align: 'right' })
+    doc.setTextColor(...(color ?? ([33, 33, 33] as [number,number,number])))
+    doc.text(label, M, y)
+    doc.text(value, W - M, y, { align: 'right' })
   }
   const section = (title: string, y: number) => {
     doc.setFillColor(243, 244, 246)
-    doc.rect(10, y - 5, 190, 7, 'F')
-    doc.setFont('helvetica', 'bold')
+    doc.rect(10, y - 5, W - 20, 7, 'F')
+    doc.setFont('Roboto', 'bold')
     doc.setFontSize(8)
     doc.setTextColor(...blue)
-    doc.text(title.toUpperCase(), 14, y)
+    doc.text(title.toUpperCase(), M, y)
     return y + 6
   }
-  const line = (y: number) => {
+  const hline = (y: number) => {
     doc.setDrawColor(229, 231, 235)
-    doc.line(10, y, 200, y)
+    doc.line(10, y, W - 10, y)
+  }
+  const highlight = (y: number, fillRgb: [number,number,number], textRgb: [number,number,number], label: string, value: string) => {
+    doc.setFillColor(...fillRgb)
+    doc.rect(10, y - 5, W - 20, 10, 'F')
+    doc.setFont('Roboto', 'bold')
+    doc.setFontSize(11)
+    doc.setTextColor(...textRgb)
+    doc.text(label, M, y + 1)
+    doc.text(value, W - M, y + 1, { align: 'right' })
+    return y + 14
   }
 
-  let y = 62
+  // ── Content ───────────────────────────────────────────────────────────────
+  let y = HEADER_H + 36
+
+  // Earnings — recompute breakdown from stored entry data for correct display
+  const wd = workingDaysInMonth(year, month)
+  const ms = monthsSinceStart(emp.start_date, year, month)
+  const bd = calcGross(
+    entry.base_salary, entry.vacation_days, entry.overtime_hours,
+    entry.bonus, entry.other_additions, entry.other_deductions,
+    wd, ms >= 12,
+  )
+
   y = section(lang === 'az' ? 'GƏLİRLƏR' : 'EARNINGS', y)
-  row(lang === 'az' ? 'Əsas Maaş' : 'Base Salary',              `₼ ${fmtPdf(entry.base_salary)}`, y); y+=7
-  if (entry.vacation_days > 0)
-    row(lang === 'az' ? 'Məzuniyyət Tutulması' : 'Vacation Deduction',
-      `- ₼ ${fmtPdf((entry.base_salary / workingDaysInMonth(year, entry.run_id)) * entry.vacation_days)}`, y, false, [220,38,38] as [number,number,number]); y+=7
-  if (entry.sick_days > 0)
-    row(lang === 'az' ? 'Xəstəlik Tutulması' : 'Sick Leave Deduction',
-      `- ₼ ${fmtPdf((entry.base_salary / workingDaysInMonth(year, entry.run_id)) * entry.sick_days)}`, y, false, [220,38,38] as [number,number,number]); y+=7
-  if (entry.overtime_hours > 0)
-    row(lang === 'az' ? 'İZ Mükafatı' : 'Overtime Pay',
-      `+ ₼ ${fmtPdf((entry.base_salary / (workingDaysInMonth(year, entry.run_id)*8)) * 1.5 * entry.overtime_hours)}`, y, false, [22,163,74] as [number,number,number]); y+=7
-  if (entry.bonus > 0) row(lang === 'az' ? 'Bonus' : 'Bonus', `+ ₼ ${fmtPdf(entry.bonus)}`, y, false, [22,163,74] as [number,number,number]); if (entry.bonus > 0) y+=7
-  if (entry.other_additions > 0) row(lang === 'az' ? 'Digər Əlavələr' : 'Other Additions', `+ ₼ ${fmtPdf(entry.other_additions)}`, y, false, [22,163,74] as [number,number,number]); if (entry.other_additions > 0) y+=7
-  if (entry.other_deductions > 0) row(lang === 'az' ? 'Digər Tutulmalar' : 'Other Deductions', `- ₼ ${fmtPdf(entry.other_deductions)}`, y, false, [220,38,38] as [number,number,number]); if (entry.other_deductions > 0) y+=7
-  line(y); y+=4
-  row(lang === 'az' ? 'DÜZƏLDILMIŞ BRÜT' : 'ADJUSTED GROSS', `₼ ${fmtPdf(entry.adjusted_gross)}`, y, true, blue); y+=10
+  if (entry.vacation_days > 0) {
+    row(lang === 'az' ? 'İş Günü Maaşı' : 'Working Days Pay', `₼ ${fmtPdf(bd.workingDaysPay)}`, y); y += 7
+    const mLabel = bd.vacationMethodUsed === 'floor' ? (lang === 'az' ? 'iş nisbəti' : 'wd rate') : `Metod ${bd.vacationMethodUsed}`
+    row(
+      lang === 'az' ? `Məzuniyyət Ödənişi (${mLabel})` : `Vacation Pay (${mLabel})`,
+      `₼ ${fmtPdf(bd.vacationPay)}`, y, false, [22, 163, 74] as [number,number,number]
+    ); y += 7
+  } else {
+    row(lang === 'az' ? 'Əsas Maaş' : 'Base Salary', `₼ ${fmtPdf(entry.base_salary)}`, y); y += 7
+  }
+  if (entry.sick_days > 0) {
+    row(
+      lang === 'az' ? `Xəstəlik (${entry.sick_days} gün) — DSMF` : `Sick Leave (${entry.sick_days} days) — SSF`,
+      lang === 'az' ? 'SSF ödəyir' : 'Paid by SSF', y, false, gray
+    ); y += 7
+  }
+  if (entry.overtime_hours > 0) {
+    row(lang === 'az' ? 'İşdənkənar Vaxt (1.5×)' : 'Overtime Pay (1.5×)', `+ ₼ ${fmtPdf(bd.overtimePay)}`, y, false, [22, 163, 74] as [number,number,number]); y += 7
+  }
+  if (entry.bonus > 0) {
+    row(lang === 'az' ? 'Bonus' : 'Bonus', `+ ₼ ${fmtPdf(entry.bonus)}`, y, false, [22, 163, 74] as [number,number,number]); y += 7
+  }
+  if (entry.other_additions > 0) {
+    row(lang === 'az' ? 'Digər Əlavələr' : 'Other Additions', `+ ₼ ${fmtPdf(entry.other_additions)}`, y, false, [22, 163, 74] as [number,number,number]); y += 7
+  }
+  if (entry.other_deductions > 0) {
+    row(lang === 'az' ? 'Digər Tutulmalar' : 'Other Deductions', `- ₼ ${fmtPdf(entry.other_deductions)}`, y, false, red); y += 7
+  }
+  hline(y); y += 4
+  row(lang === 'az' ? 'DÜZƏLDİLMİŞ BRÜT' : 'ADJUSTED GROSS', `₼ ${fmtPdf(entry.adjusted_gross)}`, y, true, blue); y += 10
 
-  y = section(lang === 'az' ? 'TUTULMALAR' : 'DEDUCTIONS', y); y+=2
-  if (entry.pit_deduction > 0) { row(lang === 'az' ? 'GV Güzəşti (azad)' : 'PIT Deduction (exempt)', `₼ ${fmtPdf(entry.pit_deduction)}`, y, false, gray); y+=7 }
-  row(lang === 'az' ? 'Gəlir Vergisi (GV)' : 'Income Tax (PIT)', `- ₼ ${fmtPdf(entry.pit)}`, y, false, [220,38,38] as [number,number,number]); y+=7
-  row(lang === 'az' ? 'Sosial Sığorta (İşçi)' : 'Social Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_social)}`, y, false, [220,38,38] as [number,number,number]); y+=7
-  if (entry.emp_health > 0) { row(lang === 'az' ? 'Sağlamlıq Sığortası (İşçi)' : 'Health Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_health)}`, y, false, [220,38,38] as [number,number,number]); y+=7 }
-  if (entry.emp_unemployment > 0) { row(lang === 'az' ? 'İşsizlik Sığortası (İşçi)' : 'Unemployment Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_unemployment)}`, y, false, [220,38,38] as [number,number,number]); y+=7 }
-  line(y); y+=4
-  row(lang === 'az' ? 'CƏMİ TUTULMALAR' : 'TOTAL DEDUCTIONS', `- ₼ ${fmtPdf(entry.total_emp_deductions)}`, y, true, [220,38,38] as [number,number,number]); y+=8
+  // Deductions
+  y = section(lang === 'az' ? 'TUTULMALAR' : 'DEDUCTIONS', y); y += 2
+  if (entry.pit_deduction > 0) { row(lang === 'az' ? 'GV Güzəşti (azad)' : 'PIT Exemption', `₼ ${fmtPdf(entry.pit_deduction)}`, y, false, gray); y += 7 }
+  row(lang === 'az' ? 'Gəlir Vergisi (GV)' : 'Income Tax (PIT)', `- ₼ ${fmtPdf(entry.pit)}`, y, false, red); y += 7
+  row(lang === 'az' ? 'Sosial Sığorta (İşçi)' : 'Social Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_social)}`, y, false, red); y += 7
+  if (entry.emp_health > 0) { row(lang === 'az' ? 'Sağlamlıq Sığortası (İşçi)' : 'Health Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_health)}`, y, false, red); y += 7 }
+  if (entry.emp_unemployment > 0) { row(lang === 'az' ? 'İşsizlik Sığortası (İşçi)' : 'Unemployment Ins. (Employee)', `- ₼ ${fmtPdf(entry.emp_unemployment)}`, y, false, red); y += 7 }
+  hline(y); y += 4
+  row(lang === 'az' ? 'CƏMİ TUTULMALAR' : 'TOTAL DEDUCTIONS', `- ₼ ${fmtPdf(entry.total_emp_deductions)}`, y, true, red); y += 8
 
-  doc.setFillColor(220, 252, 231)
-  doc.rect(10, y-5, 190, 10, 'F')
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(11)
-  doc.setTextColor(21, 128, 61)
-  doc.text(lang === 'az' ? 'XALİS MAAŞ' : 'NET SALARY', 14, y+1)
-  doc.text(`₼ ${fmtPdf(entry.net_salary)}`, 196, y+1, { align: 'right' })
-  y += 14
+  // Net salary
+  y = highlight(y, [220, 252, 231], green, lang === 'az' ? 'XALİS MAAŞ' : 'NET SALARY', `₼ ${fmtPdf(entry.net_salary)}`)
 
+  // Avans
   if (entry.avans_amount > 0) {
     y = section(lang === 'az' ? 'AVANS' : 'ADVANCE PAYMENT', y); y += 2
-    row(lang === 'az' ? 'Avans' : 'Advance', `- ₼ ${fmtPdf(entry.avans_amount)}`, y, false, [220, 38, 38] as [number,number,number]); y += 7
+    row(lang === 'az' ? 'Avans' : 'Advance', `- ₼ ${fmtPdf(entry.avans_amount)}`, y, false, red); y += 7
     if (entry.avans_paid_at) {
       doc.setFontSize(8)
-      doc.setFont('helvetica', 'normal')
+      doc.setFont('Roboto', 'normal')
       doc.setTextColor(...gray)
       doc.text(
-        `${lang === 'az' ? 'Avans ödəniş tarixi' : 'Advance paid on'}: ${new Date(entry.avans_paid_at).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`,
-        14, y
+        `${lang === 'az' ? 'Avans ödəniş tarixi' : 'Advance paid on'}: ` +
+        new Date(entry.avans_paid_at).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
+        M, y
       ); y += 7
     }
-    line(y); y += 4
-    doc.setFillColor(243, 232, 255)
-    doc.rect(10, y - 5, 190, 10, 'F')
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(11)
-    doc.setTextColor(109, 40, 217)
-    const finalPay = entry.net_salary - entry.avans_amount
-    doc.text(lang === 'az' ? 'ÖDƏNİLƏCƏK MƏBLƏĞ' : 'FINAL PAYMENT', 14, y + 1)
-    doc.text(`₼ ${fmtPdf(finalPay)}`, 196, y + 1, { align: 'right' })
-    y += 14
+    hline(y); y += 4
+    y = highlight(y, [219, 234, 254], blue, lang === 'az' ? 'ÖDƏNİLƏCƏK MƏBLƏĞ' : 'FINAL PAYMENT', `₼ ${fmtPdf(entry.net_salary - entry.avans_amount)}`)
   }
 
-  y = section(lang === 'az' ? 'İŞƏGÖTÜRƏN XƏRCLƏRİ' : 'EMPLOYER COSTS', y); y+=2
-  row(lang === 'az' ? 'Sosial Sığorta (İşv.)' : 'Social Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_social)}`, y); y+=7
-  if (entry.emplr_health > 0) { row(lang === 'az' ? 'Sağlamlıq Sığortası (İşv.)' : 'Health Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_health)}`, y); y+=7 }
-  if (entry.emplr_unemployment > 0) { row(lang === 'az' ? 'İşsizlik Sığortası (İşv.)' : 'Unemployment Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_unemployment)}`, y); y+=7 }
-  line(y); y+=4
-  row(lang === 'az' ? 'ÜMUMİ İŞƏGÖTÜRƏN XƏRCİ' : 'TOTAL EMPLOYER COST', `₼ ${fmtPdf(entry.total_employer_cost)}`, y, true, [234,88,12] as [number,number,number]); y+=12
+  // Employer costs
+  y = section(lang === 'az' ? 'İŞƏGÖTÜRƏN XƏRCLƏRİ' : 'EMPLOYER COSTS', y); y += 2
+  row(lang === 'az' ? 'Sosial Sığorta (İşv.)' : 'Social Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_social)}`, y); y += 7
+  if (entry.emplr_health > 0) { row(lang === 'az' ? 'Sağlamlıq Sığortası (İşv.)' : 'Health Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_health)}`, y); y += 7 }
+  if (entry.emplr_unemployment > 0) { row(lang === 'az' ? 'İşsizlik Sığortası (İşv.)' : 'Unemployment Ins. (Employer)', `₼ ${fmtPdf(entry.emplr_unemployment)}`, y); y += 7 }
+  hline(y); y += 4
+  row(lang === 'az' ? 'ÜMUMİ İŞƏGÖTÜRƏN XƏRCİ' : 'TOTAL EMPLOYER COST', `₼ ${fmtPdf(entry.total_employer_cost)}`, y, true, [234, 88, 12] as [number,number,number]); y += 12
 
+  // Footer
+  hline(275)
   doc.setFontSize(7)
-  doc.setFont('helvetica', 'normal')
+  doc.setFont('Roboto', 'normal')
   doc.setTextColor(...gray)
-  doc.text('AzFinance · Generated on ' + new Date().toLocaleDateString(), 14, 280)
-  doc.text(`${lang === 'az' ? 'Dövr' : 'Period'}: ${monthName} ${year}`, 196, 280, { align: 'right' })
+  doc.text('AzFinance · ' + new Date().toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB'), M, 280)
+  doc.text(`${lang === 'az' ? 'Dövr' : 'Period'}: ${monthName} ${year}`, W - M, 280, { align: 'right' })
 
-  doc.save(`payslip_${emp.full_name.replace(/\s+/g,'_')}_${year}_${String(entry.run_id).padStart(2,'0')}.pdf`)
+  doc.save(`payslip_${emp.full_name.replace(/\s+/g, '_')}_${year}_${String(month).padStart(2, '0')}.pdf`)
 }
 
-function generateRunPDF(
+async function generateRunPDF(
   entries: PayrollEntry[], empMap: Map<number, Employee>,
   monthName: string, year: number, lang: string,
 ) {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  const fonts = await loadRoboto()
+  const doc   = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
+  registerRoboto(doc, fonts.reg, fonts.bold)
   const blue = [30, 64, 175] as [number,number,number]
 
   doc.setFillColor(...blue)
   doc.rect(0, 0, 297, 20, 'F')
-  doc.setFont('helvetica', 'bold')
   doc.setFontSize(14)
+  doc.setFont('Roboto', 'bold')
   doc.setTextColor(255, 255, 255)
-  doc.text('AzFinance', 10, 13)
-  doc.setFont('helvetica', 'normal')
+  doc.text('Az', 10, 13)
+  const azW = doc.getTextWidth('Az')
+  doc.setTextColor(147, 197, 253)
+  doc.text('Finance', 10 + azW, 13)
+  doc.setFont('Roboto', 'normal')
   doc.setFontSize(10)
+  doc.setTextColor(255, 255, 255)
   doc.text((lang === 'az' ? 'Əmək Haqqı Hesabatı' : 'Payroll Report') + ` — ${monthName} ${year}`, 80, 13)
 
   const totals = entries.reduce((a, e) => ({
@@ -401,8 +493,9 @@ export default function PayrollClient() {
   const now    = new Date()
 
   // ── Shared data
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [loading,   setLoading]   = useState(true)
+  const [employees,       setEmployees]       = useState<Employee[]>([])
+  const [loading,         setLoading]         = useState(true)
+  const [companySettings, setCompanySettings] = useState<{ company_name: string; tax_id: string } | null>(null)
 
   // ── Tabs
   const [tab, setTab] = useState<TabKey>('employees')
@@ -434,10 +527,12 @@ export default function PayrollClient() {
     setTimeout(() => setToast(null), 4000)
   }
 
-  // ── Fetch employees
+  // ── Fetch employees + company settings
   useEffect(() => {
     supabase.from('employees').select('*').order('full_name')
       .then(({ data }) => { setEmployees((data as Employee[]) ?? []); setLoading(false) })
+    supabase.from('company_settings').select('company_name, tax_id').maybeSingle()
+      .then(({ data }) => setCompanySettings(data as { company_name: string; tax_id: string } | null))
   }, [])
 
   // ── Fetch run when month/year or tab changes
@@ -791,9 +886,9 @@ export default function PayrollClient() {
             <div className="flex gap-2 ml-auto">
               {currentRun && isApproved && entries.length > 0 && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const empMap = new Map(employees.map(e => [e.id, e]))
-                    generateRunPDF(entries, empMap, months[calcMonth-1], calcYear, lang)
+                    await generateRunPDF(entries, empMap, months[calcMonth-1], calcYear, lang)
                   }}
                   className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg transition-colors">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1023,7 +1118,7 @@ export default function PayrollClient() {
                             <td className="px-2 py-3 border-l border-gray-100">
                               {dbEntry && (
                                 <button
-                                  onClick={() => generatePayslipPDF(dbEntry, emp, months[calcMonth-1], calcYear, lang)}
+                                  onClick={async () => generatePayslipPDF(dbEntry, emp, calcMonth, months[calcMonth-1], calcYear, lang, companySettings)}
                                   title={t('pay.downloadPayslip')}
                                   className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 transition-colors">
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
