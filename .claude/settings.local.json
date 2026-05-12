@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(node -e \"require\\('@supabase/ssr'\\)\")",
+      "Bash(git rm *)",
+      "Bash(node -e \"const fs = require\\('fs'\\); const content = fs.readFileSync\\('node_modules/next/dist/server/dev/hot-reloader-turbopack.js', 'utf8'\\); const matches = [...content.matchAll\\(/[\\\\\"']\\(middleware|proxy\\)[\\\\\"']/g\\)]; matches.forEach\\(m => { const start = Math.max\\(0, m.index-100\\); console.log\\(content.slice\\(start, m.index+200\\)\\); console.log\\('---'\\); }\\)\")",
+      "Bash(xargs grep -l \"middleware\\\\.ts\\\\|Could not parse\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const c=fs.readFileSync\\('node_modules/next/dist/server/dev/on-demand-entry-handler.js','utf8'\\); const i=c.indexOf\\('proxy file'\\); console.log\\(c.slice\\(Math.max\\(0,i-500\\), i+500\\)\\);\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const c=fs.readFileSync\\('node_modules/next/dist/lib/is-middleware-file.js','utf8'\\); console.log\\(c\\);\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const c=fs.readFileSync\\('node_modules/next/dist/build/utils.js','utf8'\\); const i=c.indexOf\\('isMiddlewareFilename'\\); console.log\\(c.slice\\(i, i+400\\)\\);\")",
+      "Bash(node -e ' *)",
+      "PowerShell(Get-Process *)",
+      "Bash(ping -n 5 127.0.0.1)",
+      "Bash(git *)",
+      "Bash(vercel *)",
+      "Bash(npm list *)",
+      "Bash(npx vercel *)",
+      "Bash(npx tsc *)",
+      "Bash(node -e \"require\\('jspdf'\\); require\\('jspdf-autotable'\\); console.log\\('ok'\\)\")",
+      "Bash(New-Item -ItemType Directory -Force -Path \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\\\\public\\\\fonts\")",
+      "Bash(Out-Null)",
+      "Bash(Write-Host \"Directory ready\")",
+      "PowerShell(New-Item *)",
+      "PowerShell($pkg = Get-Content \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\\\\node_modules\\\\jspdf\\\\package.json\" -Raw | ConvertFrom-Json; Write-Host \"jsPDF version: $\\($pkg.version\\)\")",
+      "Bash(Test-Path *)",
+      "Bash(Get-ChildItem -Recurse -Force)",
+      "Bash(Select-Object -First 50)",
+      "Bash(node -e \"const p = require\\('./package.json'\\); const deps = {...p.dependencies, ...p.devDependencies}; const chart = Object.keys\\(deps\\).filter\\(k => /chart|recharts|victory|visx|d3/.test\\(k\\)\\); console.log\\(chart.length ? chart : 'none'\\)\")",
+      "Bash(npx supabase *)"
+    ]
+  }
+}
