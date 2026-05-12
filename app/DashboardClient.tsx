@@ -451,18 +451,20 @@ export default function DashboardClient() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(filter)) } catch {}
   }, [filter])
 
-  const [loading,      setLoading]      = useState(true)
-  const [currRevenue,  setCurrRevenue]  = useState(0)
-  const [prevRevenue,  setPrevRevenue]  = useState(0)
-  const [unpaidTotal,  setUnpaidTotal]  = useState(0)
-  const [unpaidCount,  setUnpaidCount]  = useState(0)
-  const [currExpenses, setCurrExpenses] = useState(0)
-  const [prevExpenses, setPrevExpenses] = useState(0)
-  const [currTax,      setCurrTax]      = useState(0)
-  const [prevTax,      setPrevTax]      = useState(0)
-  const [taxSettings,  setTaxSettings]  = useState<TaxSettings | null>(null)
-  const [chartData,    setChartData]    = useState<ChartPoint[]>([])
-  const [activity,     setActivity]     = useState<ActivityItem[]>([])
+  const [loading,       setLoading]       = useState(true)
+  const [currRevenue,   setCurrRevenue]   = useState(0)
+  const [prevRevenue,   setPrevRevenue]   = useState(0)
+  const [currCashFlow,  setCurrCashFlow]  = useState(0)
+  const [prevCashFlow,  setPrevCashFlow]  = useState(0)
+  const [unpaidTotal,   setUnpaidTotal]   = useState(0)
+  const [unpaidCount,   setUnpaidCount]   = useState(0)
+  const [currExpenses,  setCurrExpenses]  = useState(0)
+  const [prevExpenses,  setPrevExpenses]  = useState(0)
+  const [currTax,       setCurrTax]       = useState(0)
+  const [prevTax,       setPrevTax]       = useState(0)
+  const [taxSettings,   setTaxSettings]   = useState<TaxSettings | null>(null)
+  const [chartData,     setChartData]     = useState<ChartPoint[]>([])
+  const [activity,      setActivity]      = useState<ActivityItem[]>([])
 
   useEffect(() => {
     async function load() {
@@ -479,19 +481,23 @@ export default function DashboardClient() {
         : now.toISOString().slice(0, 10)
 
       const [
-        { data: paidCurr  },
-        { data: paidPrev  },
-        { data: unpaidQ   },
-        { data: expCurr   },
-        { data: expPrev   },
-        { data: paidChart },
-        { data: expChart  },
-        { data: recentInv },
-        { data: recentExp },
-        { data: taxRow    },
+        { data: paidCurr   },
+        { data: paidPrev   },
+        { data: cashCurr   },
+        { data: cashPrev   },
+        { data: unpaidQ    },
+        { data: expCurr    },
+        { data: expPrev    },
+        { data: paidChart  },
+        { data: expChart   },
+        { data: recentInv  },
+        { data: recentExp  },
+        { data: taxRow     },
       ] = await Promise.all([
         applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), sel),
         applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), prev),
+        applyRange(supabase.from('invoices').select('amount').eq('status', 'Paid'), sel),
+        applyRange(supabase.from('invoices').select('amount').eq('status', 'Paid'), prev),
         applyRange(supabase.from('invoices').select('amount').eq('status', 'Unpaid'), sel),
         applyRange(supabase.from('expenses').select('amount'), sel),
         applyRange(supabase.from('expenses').select('amount'), prev),
@@ -505,11 +511,15 @@ export default function DashboardClient() {
       const ts        = taxRow as TaxSettings | null
       const cRevenue  = sumRows(paidCurr)
       const pRevenue  = sumRows(paidPrev)
+      const cCash     = sumRows(cashCurr)
+      const pCash     = sumRows(cashPrev)
       const cExpenses = sumRows(expCurr)
       const pExpenses = sumRows(expPrev)
 
       setCurrRevenue(cRevenue)
       setPrevRevenue(pRevenue)
+      setCurrCashFlow(cCash)
+      setPrevCashFlow(pCash)
       setUnpaidTotal(sumRows(unpaidQ))
       setUnpaidCount(unpaidQ?.length ?? 0)
       setCurrExpenses(cExpenses)
@@ -555,9 +565,10 @@ export default function DashboardClient() {
 
   const canCompare     = filter.preset !== 'all_time'
   const noChg          = { text: '—', positive: true, neutral: true }
-  const revChg         = canCompare ? pctChange(currRevenue, prevRevenue) : noChg
+  const revChg         = canCompare ? pctChange(currRevenue,  prevRevenue)  : noChg
+  const cashChg        = canCompare ? pctChange(currCashFlow, prevCashFlow) : noChg
   const expChg         = canCompare ? pctChange(currExpenses, prevExpenses) : noChg
-  const netChg         = canCompare ? pctChange(currNet, prevNet) : noChg
+  const netChg         = canCompare ? pctChange(currNet,      prevNet)      : noChg
   const expBadgePos    = expChg.neutral ? true : !expChg.positive
 
   const label = periodLabel(filter, now, lang)
@@ -577,6 +588,23 @@ export default function DashboardClient() {
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+    },
+    {
+      titleKey:      'dash.cashFlow' as const,
+      value:         fmtAmt(currCashFlow),
+      badge:         loading ? '…' : cashChg.text,
+      badgePositive: cashChg.neutral ? true : cashChg.positive,
+      note:          label,
+      borderAccent:  'border-l-teal-500',
+      gradient:      'from-teal-50 to-white',
+      iconBg:        'bg-teal-100 text-teal-600',
+      breakdown:     undefined as undefined | Array<{ label: string; amount: string; negative?: boolean; total?: boolean }>,
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
       ),
     },
@@ -729,7 +757,7 @@ export default function DashboardClient() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5">
         {summaryCards.map((card) => (
           <div
             key={card.titleKey}
