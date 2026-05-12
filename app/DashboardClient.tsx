@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import TaxDeadlines from '@/app/ui/TaxDeadlines'
 import RecurringAlert from '@/app/ui/RecurringAlert'
+import VatThresholdMonitor from '@/app/ui/VatThresholdMonitor'
 import { useLanguage } from '@/lib/LanguageContext'
 import { supabase } from '@/lib/supabase'
 
@@ -22,6 +23,7 @@ interface TaxSettings {
   business_type:       'general' | 'trade_food'
   simplified_eligible: boolean
   employee_count:      number
+  vat_registered:      boolean
 }
 
 interface ChartPoint   { label: string; revenue: number; expenses: number }
@@ -465,6 +467,8 @@ export default function DashboardClient() {
   const [taxSettings,   setTaxSettings]   = useState<TaxSettings | null>(null)
   const [chartData,     setChartData]     = useState<ChartPoint[]>([])
   const [activity,      setActivity]      = useState<ActivityItem[]>([])
+  const [annualRevenue, setAnnualRevenue] = useState(0)
+  const [vatRegistered, setVatRegistered] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -493,6 +497,7 @@ export default function DashboardClient() {
         { data: recentInv  },
         { data: recentExp  },
         { data: taxRow     },
+        { data: annualData },
       ] = await Promise.all([
         applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), sel),
         applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), prev),
@@ -505,7 +510,9 @@ export default function DashboardClient() {
         supabase.from('expenses').select('amount, date').gte('date', chartStart).lte('date', chartEnd),
         supabase.from('invoices').select('amount, date, client, number').neq('status', 'Draft').order('date', { ascending: false }).limit(5),
         supabase.from('expenses').select('amount, date, description, category').order('date', { ascending: false }).limit(5),
-        supabase.from('tax_settings').select('tax_regime, business_type, simplified_eligible, employee_count').maybeSingle(),
+        supabase.from('tax_settings').select('tax_regime, business_type, simplified_eligible, employee_count, vat_registered').maybeSingle(),
+        supabase.from('invoices').select('amount').eq('status', 'Paid')
+          .gte('date', (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10) })()),
       ])
 
       const ts        = taxRow as TaxSettings | null
@@ -527,6 +534,8 @@ export default function DashboardClient() {
       setCurrTax(estimateTax(ts, cRevenue, cExpenses))
       setPrevTax(estimateTax(ts, pRevenue, pExpenses))
       setTaxSettings(ts)
+      setAnnualRevenue(sumRows(annualData))
+      setVatRegistered(ts?.vat_registered ?? false)
 
       const shortLabels = lang === 'az' ? MS_AZ : MS_EN
       setChartData(chartMonths.map(({ year, month }) => {
@@ -810,6 +819,13 @@ export default function DashboardClient() {
           </div>
         ))}
       </div>
+
+      {/* VAT Threshold Monitor */}
+      {!loading && !vatRegistered && (
+        <div className="mt-5">
+          <VatThresholdMonitor annualRevenue={annualRevenue} />
+        </div>
+      )}
 
       {/* Chart + Recent Activity */}
       <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-5">

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import VatThresholdMonitor from '@/app/ui/VatThresholdMonitor'
 
 type TaxRegime    = 'simplified' | 'profit_tax' | 'income_tax'
 type BusinessType = 'general' | 'trade_food'
@@ -44,20 +45,22 @@ const REGIME_OPTIONS: { value: TaxRegime; label: string; desc: string }[] = [
 ]
 
 export default function TaxSettingsClient() {
-  const [settings, setSettings] = useState<TaxSettings>(DEFAULTS)
-  const [loading, setLoading]   = useState(true)
-  const [saving, setSaving]     = useState(false)
-  const [saved, setSaved]       = useState(false)
+  const [settings,      setSettings]      = useState<TaxSettings>(DEFAULTS)
+  const [loading,       setLoading]       = useState(true)
+  const [saving,        setSaving]        = useState(false)
+  const [saved,         setSaved]         = useState(false)
+  const [annualRevenue, setAnnualRevenue] = useState(0)
 
   useEffect(() => {
-    supabase
-      .from('tax_settings')
-      .select('tax_regime, business_type, vat_registered, simplified_eligible, payroll_sector, employee_count')
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) setSettings(data as TaxSettings)
-        setLoading(false)
-      })
+    const since = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10) })()
+    Promise.all([
+      supabase.from('tax_settings').select('tax_regime, business_type, vat_registered, simplified_eligible, payroll_sector, employee_count').maybeSingle(),
+      supabase.from('invoices').select('amount').eq('status', 'Paid').gte('date', since),
+    ]).then(([{ data: ts }, { data: inv }]) => {
+      if (ts) setSettings(ts as TaxSettings)
+      setAnnualRevenue((inv ?? []).reduce((s, r) => s + (Number(r.amount) || 0), 0))
+      setLoading(false)
+    })
   }, [])
 
   function setField<K extends keyof TaxSettings>(key: K, value: TaxSettings[K]) {
@@ -158,6 +161,11 @@ export default function TaxSettingsClient() {
               ))}
             </div>
           </div>
+        )}
+
+        {/* ── VAT Threshold Monitor ────────────────────────────── */}
+        {!settings.vat_registered && (
+          <VatThresholdMonitor annualRevenue={annualRevenue} />
         )}
 
         {/* ── VAT Registration ─────────────────────────────────── */}
