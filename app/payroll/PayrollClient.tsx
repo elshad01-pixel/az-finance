@@ -116,12 +116,33 @@ function n2(n: number) {
 }
 function num(s: string) { return Math.max(0, parseFloat(s) || 0) }
 
+// Azerbaijan public holidays (month, day) — fixed-date only
+// Transfers for weekend holidays are handled via the manual adjustment feature
+const AZ_HOLIDAYS: Array<[number, number]> = [
+  [1,  1], [1,  2],                                     // New Year
+  [1, 20],                                              // Martyrs' Day
+  [3,  8],                                              // Women's Day
+  [3, 20], [3, 21], [3, 22], [3, 23], [3, 24],         // Novruz (5 days)
+  [5,  9],                                              // Victory Day
+  [5, 28],                                              // Republic Day
+  [6, 15],                                              // National Salvation Day
+  [6, 26],                                              // Armed Forces Day
+  [10, 18],                                             // Independence Day
+  [11,  8],                                             // Victory Day 2020
+  [11, 12],                                             // Constitution Day
+  [11, 17],                                             // National Revival Day
+  [12, 31],                                             // New Year's Eve
+]
+
 function workingDaysInMonth(year: number, month: number): number {
+  const holidays = new Set(
+    AZ_HOLIDAYS.filter(([m]) => m === month).map(([, d]) => d)
+  )
   let count = 0
   const last = new Date(year, month, 0).getDate()
   for (let d = 1; d <= last; d++) {
     const dow = new Date(year, month - 1, d).getDay()
-    if (dow !== 0 && dow !== 6) count++
+    if (dow !== 0 && dow !== 6 && !holidays.has(d)) count++
   }
   return count
 }
@@ -341,7 +362,7 @@ async function generatePayslipPDF(
   if (entry.pit_deduction > 0) { row(lang === 'az' ? 'GV Güzəşti (azad)' : 'PIT Exemption', `₼ ${fmtPdf(entry.pit_deduction)}`, y, false, gray); y += 7 }
   row(lang === 'az' ? 'Gəlir Vergisi (GV)' : 'Income Tax (PIT)', `- ₼ ${fmtPdf(entry.pit)}`, y, false, red); y += 7
   row(lang === 'az' ? 'Sosial Sığorta (İşçi)' : 'Social Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_social)}`, y, false, red); y += 7
-  if (entry.emp_health > 0) { row(lang === 'az' ? 'Sağlamlıq Sığortası (İşçi)' : 'Health Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_health)}`, y, false, red); y += 7 }
+  if (entry.emp_health > 0) { row(lang === 'az' ? 'Tibbi İcbari Sığorta (İşçi)' : 'Medical Insurance (Employee)', `- ₼ ${fmtPdf(entry.emp_health)}`, y, false, red); y += 7 }
   if (entry.emp_unemployment > 0) { row(lang === 'az' ? 'İşsizlik Sığortası (İşçi)' : 'Unemployment Ins. (Employee)', `- ₼ ${fmtPdf(entry.emp_unemployment)}`, y, false, red); y += 7 }
   hline(y); y += 4
   row(lang === 'az' ? 'CƏMİ TUTULMALAR' : 'TOTAL DEDUCTIONS', `- ₼ ${fmtPdf(entry.total_emp_deductions)}`, y, true, red); y += 8
@@ -370,7 +391,7 @@ async function generatePayslipPDF(
   // Employer costs
   y = section(lang === 'az' ? 'İŞƏGÖTÜRƏN XƏRCLƏRİ' : 'EMPLOYER COSTS', y); y += 2
   row(lang === 'az' ? 'Sosial Sığorta (İşv.)' : 'Social Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_social)}`, y); y += 7
-  if (entry.emplr_health > 0) { row(lang === 'az' ? 'Sağlamlıq Sığortası (İşv.)' : 'Health Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_health)}`, y); y += 7 }
+  if (entry.emplr_health > 0) { row(lang === 'az' ? 'Tibbi İcbari Sığorta (İşv.)' : 'Medical Insurance (Employer)', `₼ ${fmtPdf(entry.emplr_health)}`, y); y += 7 }
   if (entry.emplr_unemployment > 0) { row(lang === 'az' ? 'İşsizlik Sığortası (İşv.)' : 'Unemployment Ins. (Employer)', `₼ ${fmtPdf(entry.emplr_unemployment)}`, y); y += 7 }
   hline(y); y += 4
   row(lang === 'az' ? 'ÜMUMİ İŞƏGÖTÜRƏN XƏRCİ' : 'TOTAL EMPLOYER COST', `₼ ${fmtPdf(entry.total_employer_cost)}`, y, true, [234, 88, 12] as [number,number,number]); y += 12
@@ -518,6 +539,13 @@ export default function PayrollClient() {
   // ── History tab
   const [history,     setHistory]     = useState<PayrollRun[]>([])
   const [histLoading, setHistLoading] = useState(false)
+  const [histAvans,   setHistAvans]   = useState<Record<number, { total: number; paid: number }>>( {})
+
+  // ── Working-days override
+  const [wdAdjustment, setWdAdjustment] = useState(0)
+  const [editingWd,    setEditingWd]    = useState(false)
+  const [wdInput,      setWdInput]      = useState('0')
+  const [wdSaving,     setWdSaving]     = useState(false)
 
   // ── Toast
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
@@ -560,7 +588,7 @@ export default function PayrollClient() {
         bonus:            String(e.bonus),
         other_additions:  String(e.other_additions),
         other_deductions: String(e.other_deductions),
-        avans:            String(e.avans_amount),
+        avans:            String(e.avans_amount ?? 0),
       }
     }
     setEditForms(forms)
@@ -576,11 +604,45 @@ export default function PayrollClient() {
     if (tab !== 'history') return
     setHistLoading(true)
     supabase.from('payroll_runs').select('*').order('year', { ascending: false }).order('month', { ascending: false })
-      .then(({ data }) => { setHistory((data as PayrollRun[]) ?? []); setHistLoading(false) })
+      .then(async ({ data }) => {
+        const runs = (data as PayrollRun[]) ?? []
+        setHistory(runs)
+        if (runs.length > 0) {
+          const runIds = runs.map(r => r.id)
+          const { data: ents } = await supabase
+            .from('payroll_entries').select('run_id, avans_amount, avans_paid')
+            .in('run_id', runIds)
+          const map: Record<number, { total: number; paid: number }> = {}
+          for (const e of ents ?? []) {
+            if (!map[e.run_id]) map[e.run_id] = { total: 0, paid: 0 }
+            map[e.run_id].total += e.avans_amount ?? 0
+            if (e.avans_paid) map[e.run_id].paid += e.avans_amount ?? 0
+          }
+          setHistAvans(map)
+        }
+        setHistLoading(false)
+      })
   }, [tab])
 
+  // ── Load working-days override for selected period
+  useEffect(() => {
+    if (tab !== 'run') return
+    setWdAdjustment(0)
+    setWdInput('0')
+    setEditingWd(false)
+    supabase.from('payroll_wd_overrides')
+      .select('adjustment').eq('year', calcYear).eq('month', calcMonth)
+      .maybeSingle()
+      .then(({ data }) => {
+        const adj = data?.adjustment ?? 0
+        setWdAdjustment(adj)
+        setWdInput(String(adj))
+      })
+  }, [tab, calcMonth, calcYear])
+
   // ── Working days for current period
-  const wd = workingDaysInMonth(calcYear, calcMonth)
+  const officialWd = workingDaysInMonth(calcYear, calcMonth)
+  const wd         = officialWd + wdAdjustment
   const activeEmployees = employees.filter(e => e.status === 'active')
 
   // ── Live-computed row (using local forms, not DB entries)
@@ -689,6 +751,36 @@ export default function PayrollClient() {
       ))
       showToast(t('pay.avansMarkedPaid'), true)
     }
+  }
+
+  // ── Save working-days adjustment
+  async function handleSaveWd() {
+    setWdSaving(true)
+    const adj = parseInt(wdInput) || 0
+    await supabase.from('payroll_wd_overrides')
+      .upsert({ year: calcYear, month: calcMonth, adjustment: adj }, { onConflict: 'year,month' })
+    setWdAdjustment(adj)
+    setEditingWd(false)
+    setWdSaving(false)
+  }
+
+  // ── Set 50% avans for all employees at once
+  function handleSet50Avans() {
+    setEditForms(prev => {
+      const next: Record<number, EntryForm> = {}
+      for (const emp of activeEmployees) {
+        const form = prev[emp.id] ?? EMPTY_FORM()
+        const ms   = monthsSinceStart(emp.start_date, calcYear, calcMonth)
+        const bd   = calcGross(
+          emp.gross_salary, num(form.vacation_days), num(form.overtime_hours),
+          num(form.bonus), num(form.other_additions), num(form.other_deductions),
+          wd, ms >= 12,
+        )
+        const tax  = calcPayroll(bd.gross, emp.payroll_sector, emp.is_main_workplace)
+        next[emp.id] = { ...form, avans: String(Math.round(tax.netSalary * 0.5 * 100) / 100) }
+      }
+      return { ...prev, ...next }
+    })
   }
 
   // ── Navigate to a historical run
@@ -858,20 +950,46 @@ export default function PayrollClient() {
           <div className="flex flex-wrap items-end gap-3 mb-6">
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{t('pay.selectMonth')}</label>
-              <select value={calcMonth} onChange={e => setCalcMonth(Number(e.target.value))} disabled={!!currentRun}
+              <select value={calcMonth} onChange={e => setCalcMonth(Number(e.target.value))} disabled={currentRun?.status === 'draft'}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
                 {months.map((name, i) => <option key={i+1} value={i+1}>{name}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{t('pay.year')}</label>
-              <select value={calcYear} onChange={e => setCalcYear(Number(e.target.value))} disabled={!!currentRun}
+              <select value={calcYear} onChange={e => setCalcYear(Number(e.target.value))} disabled={currentRun?.status === 'draft'}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
                 {[2023,2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            <div className="text-xs text-gray-400 self-end pb-2">
-              {wd} {lang === 'az' ? 'iş günü' : 'working days'}
+            <div className="self-end pb-2 flex flex-col gap-1">
+              <div className="text-xs text-gray-500 tabular-nums">
+                {lang === 'az'
+                  ? `Rəsmi: ${officialWd} | Düzəliş: ${wdAdjustment >= 0 ? '+' : ''}${wdAdjustment} | Faktiki: ${wd}`
+                  : `Official: ${officialWd} | Adj: ${wdAdjustment >= 0 ? '+' : ''}${wdAdjustment} | Effective: ${wd}`
+                }
+              </div>
+              {!isApproved && (
+                editingWd
+                  ? <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={wdInput}
+                        onChange={e => setWdInput(e.target.value)}
+                        className="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      />
+                      <button onClick={handleSaveWd} disabled={wdSaving}
+                        className="text-xs text-white bg-blue-600 hover:bg-blue-700 px-2 py-0.5 rounded disabled:opacity-50">
+                        {wdSaving ? '…' : '✓'}
+                      </button>
+                      <button onClick={() => { setEditingWd(false); setWdInput(String(wdAdjustment)) }}
+                        className="text-xs text-gray-400 hover:text-gray-600 px-1">✕</button>
+                    </div>
+                  : <button onClick={() => setEditingWd(true)}
+                      className="text-[10px] text-blue-500 hover:text-blue-700 underline text-left">
+                      {lang === 'az' ? 'Düzəliş et' : 'Edit working days'}
+                    </button>
+              )}
             </div>
 
             {currentRun && (
@@ -884,6 +1002,15 @@ export default function PayrollClient() {
             )}
 
             <div className="flex gap-2 ml-auto">
+              {currentRun && !isApproved && (
+                <button onClick={handleSet50Avans}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 rounded-lg transition-colors">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  {lang === 'az' ? '50% Avans' : 'Set 50% Avans'}
+                </button>
+              )}
               {currentRun && isApproved && entries.length > 0 && (
                 <button
                   onClick={async () => {
@@ -955,7 +1082,7 @@ export default function PayrollClient() {
               {/* Editable / read-only run table */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1720px] text-sm">
+                  <table className="w-full min-w-[1800px] text-sm">
                     <thead>
                       <tr className="text-xs font-semibold uppercase tracking-wider border-b border-gray-100">
                         <th colSpan={2} className="px-4 py-2.5 text-left text-gray-500 bg-gray-50 border-r border-gray-100">{t('pay.employees')}</th>
@@ -964,7 +1091,7 @@ export default function PayrollClient() {
                           {lang === 'az' ? '← Düzəlişlər →' : '← Adjustments →'}
                         </th>
                         <th className="px-3 py-2.5 text-right text-blue-700 bg-blue-50 border-r border-blue-100">{t('pay.adjustedGross')}</th>
-                        <th colSpan={5} className="px-3 py-2.5 text-center text-red-700 bg-red-50 border-r border-red-100">
+                        <th colSpan={6} className="px-3 py-2.5 text-center text-red-700 bg-red-50 border-r border-red-100">
                           {lang === 'az' ? '← İşçi Tutulmaları →' : '← Employee Deductions →'}
                         </th>
                         <th className="px-3 py-2.5 text-center text-green-700 bg-green-50 border-r border-green-100">{t('pay.netSalary')}</th>
@@ -981,19 +1108,17 @@ export default function PayrollClient() {
                         <th className="text-left px-3 py-3 border-r border-gray-100">{t('pay.position')}</th>
                         <th className="text-right px-3 py-3 text-blue-600 border-r border-blue-100">{lang==='az'?'Əsas':'Base'}</th>
                         <th className="text-right px-3 py-3 text-violet-600">{t('pay.vacationDays')}</th>
-                        <th className="text-right px-3 py-3 text-violet-600">
-                          {t('pay.sickDays')}
-                          <div className="text-[9px] font-normal text-amber-600 leading-tight">DSMF</div>
-                        </th>
+                        <th className="text-right px-3 py-3 text-violet-600">{t('pay.sickDays')}</th>
                         <th className="text-right px-3 py-3 text-violet-600">{t('pay.overtimeHours')}</th>
                         <th className="text-right px-3 py-3 text-violet-600">{t('pay.bonus')}</th>
-                        <th className="text-right px-3 py-3 text-violet-600">{t('pay.otherAdditions')}</th>
-                        <th className="text-right px-3 py-3 text-violet-600 border-r border-violet-100">{t('pay.otherDeductions')}</th>
+                        <th className="text-right px-3 py-3 text-violet-600 cursor-help" title={lang === 'az' ? 'Ezamiyyət, yemək pulu və s.' : 'Travel allowance, meal allowance, etc.'}>{t('pay.otherAdditions')}</th>
+                        <th className="text-right px-3 py-3 text-violet-600 border-r border-violet-100 cursor-help" title={lang === 'az' ? 'Məhkəmə tutulmaları, borc və s.' : 'Court deductions, debt recovery, etc.'}>{t('pay.otherDeductions')}</th>
                         <th className="text-right px-3 py-3 font-bold text-blue-700 border-r border-blue-100">{lang==='az'?'Adj. Brüt':'Adj. Gross'}</th>
                         <th className="text-right px-3 py-3 text-gray-500">{t('pay.pitDeduction')}</th>
                         <th className="text-right px-3 py-3 text-red-500">{t('pay.pit')}</th>
                         <th className="text-right px-3 py-3 text-red-500">{t('pay.empSocial')}</th>
                         <th className="text-right px-3 py-3 text-red-500">{t('pay.empHealth')}</th>
+                        <th className="text-right px-3 py-3 text-red-500">{lang==='az'?'İşsizlik Sığ.':'Unemp. Ins.'}</th>
                         <th className="text-right px-3 py-3 font-bold text-red-700 border-r border-red-100">{t('pay.totalDeductions')}</th>
                         <th className="text-right px-3 py-3 font-bold text-green-700 border-r border-green-100">{t('pay.netSalary')}</th>
                         <th className="text-center px-3 py-3 text-purple-600">{t('pay.avans')}</th>
@@ -1075,41 +1200,51 @@ export default function PayrollClient() {
                             <td className="px-3 py-3 text-right text-red-600 tabular-nums text-xs">{n2(r.pit)}</td>
                             <td className="px-3 py-3 text-right text-red-600 tabular-nums text-xs">{n2(r.empSocial)}</td>
                             <td className="px-3 py-3 text-right text-red-600 tabular-nums text-xs">{n2(r.empHealth)}</td>
+                            <td className="px-3 py-3 text-right text-red-600 tabular-nums text-xs">{n2(r.empUnemployment)}</td>
                             <td className="px-3 py-3 text-right font-bold text-red-700 tabular-nums text-xs border-r border-red-100">{n2(r.totalEmpDeductions)}</td>
                             <td className="px-3 py-3 text-right font-bold text-green-700 tabular-nums text-xs border-r border-green-100">{n2(r.netSalary)}</td>
                             {/* ── Avans ── */}
                             <td className="px-3 py-3 text-center">
                               <div className="flex flex-col items-center gap-1">
                                 {isApproved
-                                  ? <span className="tabular-nums text-xs">{n2(num(f.avans))}</span>
+                                  ? <span className="tabular-nums text-xs font-semibold text-purple-700">
+                                      {num(f.avans) > 0 ? n2(num(f.avans)) : '—'}
+                                    </span>
                                   : (
                                     <input
                                       type="number" min="0" step="0.01"
                                       value={f.avans}
-                                      onChange={e => setField('avans', e.target.value)}
+                                      onChange={e => {
+                                        const empId = emp.id
+                                        const val   = e.target.value
+                                        setEditForms(prev => ({
+                                          ...prev,
+                                          [empId]: { ...(prev[empId] ?? EMPTY_FORM()), avans: val },
+                                        }))
+                                      }}
                                       className="w-20 border border-gray-200 rounded px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-purple-400 tabular-nums"
                                     />
                                   )
                                 }
-                                {dbEntry?.avans_paid ? (
-                                  <span className="text-[9px] text-green-600 font-medium">
-                                    ✓ {new Date(dbEntry.avans_paid_at!).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'short' })}
-                                  </span>
-                                ) : (
-                                  <span className="text-[9px] text-amber-600">{t('pay.avansNotPaid')}</span>
-                                )}
+                                {dbEntry ? (
+                                  dbEntry.avans_paid ? (
+                                    <span className="text-[9px] text-green-600 font-semibold whitespace-nowrap">
+                                      ✓ {lang === 'az' ? 'Ödənilib' : 'Paid'}{' '}
+                                      {new Date(dbEntry.avans_paid_at!).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'short' })}
+                                    </span>
+                                  ) : num(f.avans) > 0 ? (
+                                    <button
+                                      onClick={() => handleMarkAvansPaid(dbEntry.id)}
+                                      className="text-[9px] font-semibold text-amber-600 hover:text-white hover:bg-amber-500 border border-amber-300 px-2 py-0.5 rounded transition-colors whitespace-nowrap">
+                                      {lang === 'az' ? 'Ödənilməyib' : 'Not paid'}
+                                    </button>
+                                  ) : null
+                                ) : null}
                               </div>
                             </td>
                             {/* ── Final Payment ── */}
                             <td className="px-3 py-3 text-right font-bold text-purple-700 tabular-nums text-xs border-r border-purple-100">
-                              <div>{n2(Math.max(0, r.netSalary - num(f.avans)))}</div>
-                              {dbEntry && !dbEntry.avans_paid && num(f.avans) > 0 && (
-                                <button
-                                  onClick={() => handleMarkAvansPaid(dbEntry.id)}
-                                  className="mt-1 text-[9px] font-semibold text-white bg-purple-600 hover:bg-purple-700 px-2 py-0.5 rounded transition-colors whitespace-nowrap">
-                                  {t('pay.markAvansPaid')}
-                                </button>
-                              )}
+                              {n2(Math.max(0, r.netSalary - num(f.avans)))}
                             </td>
                             <td className="px-3 py-3 text-right text-orange-600 tabular-nums text-xs">{n2(r.emplrSocial)}</td>
                             <td className="px-3 py-3 text-right text-orange-600 tabular-nums text-xs">{n2(r.emplrHealth)}</td>
@@ -1144,7 +1279,7 @@ export default function PayrollClient() {
                         <td className="px-3 py-3 text-right tabular-nums text-blue-800 border-r border-blue-100">{n2(runTotals.gross)}</td>
                         <td></td>
                         <td className="px-3 py-3 text-right tabular-nums text-red-700">{n2(runTotals.pit)}</td>
-                        <td colSpan={2}></td>
+                        <td colSpan={3}></td>
                         <td className="px-3 py-3 text-right tabular-nums text-red-800 border-r border-red-100">{n2(runTotals.ded)}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-green-800 border-r border-green-100">{n2(runTotals.net)}</td>
                         <td className="px-3 py-3 text-right tabular-nums text-purple-700">{n2(runTotals.avans)}</td>
@@ -1173,13 +1308,22 @@ export default function PayrollClient() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  {[lang==='az'?'Dövr':'Period', t('common.status'), lang==='az'?'Təsdiq Tarixi':'Approved On', lang==='az'?'Yaradılma':'Created', ''].map((h,i) => (
+                  {[
+                    lang==='az' ? 'Dövr'         : 'Period',
+                    t('common.status'),
+                    lang==='az' ? 'Avans'         : 'Advance',
+                    lang==='az' ? 'Təsdiq Tarixi' : 'Approved On',
+                    lang==='az' ? 'Yaradılma'     : 'Created',
+                    '',
+                  ].map((h,i) => (
                     <th key={i} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3.5 last:w-32">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {history.map(run => (
+                {history.map(run => {
+                  const av = histAvans[run.id]
+                  return (
                   <tr key={run.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-5 py-4">
                       <p className="font-semibold text-gray-900">{months[run.month - 1]} {run.year}</p>
@@ -1191,6 +1335,23 @@ export default function PayrollClient() {
                         <span className={`w-1.5 h-1.5 rounded-full ${run.status === 'approved' ? 'bg-green-500' : 'bg-amber-500'}`} />
                         {t(run.status === 'approved' ? 'pay.runApproved' : 'pay.runDraft')}
                       </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      {av && av.total > 0 ? (
+                        <div>
+                          <p className="text-sm font-semibold text-purple-700 tabular-nums">{fmt(av.total)}</p>
+                          <p className={`text-[11px] font-medium mt-0.5 ${av.paid >= av.total ? 'text-green-600' : 'text-amber-600'}`}>
+                            {av.paid >= av.total
+                              ? (lang === 'az' ? '✓ Ödənilib' : '✓ Paid')
+                              : av.paid > 0
+                                ? `${fmt(av.paid)} ${lang === 'az' ? 'ödənilib' : 'paid'}`
+                                : (lang === 'az' ? 'Ödənilməyib' : 'Not paid')
+                            }
+                          </p>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-5 py-4 text-sm text-gray-500">
                       {run.approved_at ? new Date(run.approved_at).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
@@ -1205,7 +1366,8 @@ export default function PayrollClient() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           )}
