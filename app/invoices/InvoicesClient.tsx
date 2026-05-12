@@ -394,7 +394,7 @@ export default function InvoicesClient() {
           client_address: clientAddress,
           date:           invoiceDate,
           due_date:       dueDate,
-          amount:         grandTotal,
+          amount:         subtotal,
           vat_applied:    vatEnabled,
           line_items:     storedItems,
         })
@@ -431,7 +431,7 @@ export default function InvoicesClient() {
           client_address: clientAddress,
           date:           invoiceDate,
           due_date:       dueDate,
-          amount:         grandTotal,
+          amount:         subtotal,
           vat_applied:    vatEnabled,
           status:         'Draft',
           line_items:     storedItems,
@@ -560,7 +560,12 @@ export default function InvoicesClient() {
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.client}</td>
                       <td className="px-6 py-4 text-sm text-gray-500">{formatDate(inv.date)}</td>
                       <td className="px-6 py-4 text-sm text-gray-500">{formatDate(inv.due_date)}</td>
-                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 tabular-nums">{fmt(inv.amount)}</td>
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 tabular-nums">
+                        {fmt(inv.amount)}
+                        {inv.vat_applied && (
+                          <span className="ml-1.5 text-xs font-medium text-blue-500 normal-nums">+ƏDV</span>
+                        )}
+                      </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center text-xs font-semibold px-3 py-1 rounded-full ${STATUS_STYLES[inv.status]}`}>
                           {statusLabel(inv.status)}
