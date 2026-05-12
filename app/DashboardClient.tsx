@@ -490,14 +490,14 @@ export default function DashboardClient() {
         { data: recentExp },
         { data: taxRow    },
       ] = await Promise.all([
-        applyRange(supabase.from('invoices').select('amount').eq('status', 'Paid'), sel),
-        applyRange(supabase.from('invoices').select('amount').eq('status', 'Paid'), prev),
+        applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), sel),
+        applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), prev),
         applyRange(supabase.from('invoices').select('amount').eq('status', 'Unpaid'), sel),
         applyRange(supabase.from('expenses').select('amount'), sel),
         applyRange(supabase.from('expenses').select('amount'), prev),
-        supabase.from('invoices').select('amount, date').eq('status', 'Paid').gte('date', chartStart).lte('date', chartEnd),
+        supabase.from('invoices').select('amount, date').neq('status', 'Draft').gte('date', chartStart).lte('date', chartEnd),
         supabase.from('expenses').select('amount, date').gte('date', chartStart).lte('date', chartEnd),
-        supabase.from('invoices').select('amount, date, client, number').eq('status', 'Paid').order('date', { ascending: false }).limit(5),
+        supabase.from('invoices').select('amount, date, client, number').neq('status', 'Draft').order('date', { ascending: false }).limit(5),
         supabase.from('expenses').select('amount, date, description, category').order('date', { ascending: false }).limit(5),
         supabase.from('tax_settings').select('tax_regime, business_type, simplified_eligible, employee_count').maybeSingle(),
       ])
