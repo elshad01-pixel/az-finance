@@ -38,6 +38,7 @@ interface Invoice {
   amount:         number
   status:         Status
   line_items:     StoredLineItem[] | null
+  vat_applied:    boolean | null
 }
 
 interface LineItem {
@@ -136,6 +137,10 @@ export default function InvoicesClient() {
   const [confirm, setConfirm]       = useState<ConfirmState | null>(null)
   const [confirming, setConfirming] = useState(false)
 
+  // ── VAT ───────────────────────────────────────────────────────────────
+  const [vatRegistered, setVatRegistered] = useState(false)
+  const [vatEnabled, setVatEnabled]       = useState(false)
+
   // ── PDF download ──────────────────────────────────────────────────────
   const [downloadingId, setDownloadingId] = useState<number | null>(null)
 
@@ -152,19 +157,25 @@ export default function InvoicesClient() {
     Promise.all([
       supabase.from('invoices').select('*').order('created_at', { ascending: false }),
       supabase.from('clients').select('id, company, email, address').order('company'),
-    ]).then(([invRes, cliRes]) => {
+      supabase.from('tax_settings').select('vat_registered').maybeSingle(),
+    ]).then(([invRes, cliRes, taxRes]) => {
       setInvoices((invRes.data as Invoice[]) ?? [])
       setClients((cliRes.data as Client[]) ?? [])
+      const isVat = taxRes.data?.vat_registered ?? false
+      setVatRegistered(isVat)
+      setVatEnabled(isVat)
       setLoading(false)
       setClientsLoading(false)
     })
   }, [])
 
   // ── Derived ───────────────────────────────────────────────────────────
-  const total = lineItems.reduce(
+  const subtotal   = lineItems.reduce(
     (s, i) => s + (parseFloat(i.quantity) || 0) * (parseFloat(i.unitPrice) || 0),
     0,
   )
+  const vatAmount  = vatEnabled ? subtotal * 0.18 : 0
+  const grandTotal = subtotal + vatAmount
 
   const filtered = invoices.filter(inv =>
     inv.client.toLowerCase().includes(search.toLowerCase()) &&
@@ -206,6 +217,7 @@ export default function InvoicesClient() {
     setLineItems([EMPTY_LINE()]); setEditingInvoice(null)
     setShowQuickAdd(false)
     setQaForm({ company: '', contact: '', email: '', phone: '', address: '' })
+    setVatEnabled(vatRegistered)
   }
 
   function closeModal() { setShowModal(false); resetForm() }
@@ -235,6 +247,7 @@ export default function InvoicesClient() {
         setClientAddress(inv.client_address ?? '')
       }
     }
+    setVatEnabled(inv.vat_applied ?? vatRegistered)
     setInvoiceDate(inv.date)
     setDueDate(inv.due_date)
     setLineItems(
@@ -277,6 +290,7 @@ export default function InvoicesClient() {
           clientEmail:   inv.client_email   ?? '',
           line_items:    inv.line_items ?? [],
           amount:        inv.amount,
+          vat_applied:   inv.vat_applied ?? false,
         },
         {
           company_name:    cs?.company_name    ?? '',
@@ -380,7 +394,8 @@ export default function InvoicesClient() {
           client_address: clientAddress,
           date:           invoiceDate,
           due_date:       dueDate,
-          amount:         total,
+          amount:         grandTotal,
+          vat_applied:    vatEnabled,
           line_items:     storedItems,
         })
         .eq('id', editingInvoice.id)
@@ -416,7 +431,8 @@ export default function InvoicesClient() {
           client_address: clientAddress,
           date:           invoiceDate,
           due_date:       dueDate,
-          amount:         total,
+          amount:         grandTotal,
+          vat_applied:    vatEnabled,
           status:         'Draft',
           line_items:     storedItems,
         })
@@ -825,7 +841,7 @@ export default function InvoicesClient() {
                         )
                       })}
                     </div>
-                    <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50 px-3 py-2.5">
+                    <div className="border-t border-gray-100 bg-gray-50 px-3 py-2.5">
                       <button type="button"
                         onClick={() => setLineItems(prev => [...prev, EMPTY_LINE()])}
                         className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors">
@@ -834,11 +850,40 @@ export default function InvoicesClient() {
                         </svg>
                         {t('inv.addLineItem')}
                       </button>
-                      <div className="text-sm text-gray-700">
-                        {t('common.total')}: <span className="font-bold text-blue-700 tabular-nums">₼&nbsp;{total.toFixed(2)}</span>
-                      </div>
                     </div>
                   </div>
+
+                  {/* Totals breakdown */}
+                  <div className="mt-3 space-y-1.5 text-sm">
+                    <div className="flex items-center justify-between text-gray-600">
+                      <span>Cəmi</span>
+                      <span className="tabular-nums font-medium text-gray-800">₼&nbsp;{subtotal.toFixed(2)}</span>
+                    </div>
+                    {vatRegistered && (
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={vatEnabled}
+                            onClick={() => setVatEnabled(v => !v)}
+                            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${vatEnabled ? 'bg-blue-600' : 'bg-gray-300'}`}
+                          >
+                            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${vatEnabled ? 'translate-x-4' : 'translate-x-1'}`} />
+                          </button>
+                          <span className="text-gray-600">ƏDV 18%</span>
+                        </label>
+                        <span className={`tabular-nums font-medium transition-colors ${vatEnabled ? 'text-gray-800' : 'text-gray-400'}`}>
+                          ₼&nbsp;{vatAmount.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between border-t border-gray-200 pt-2">
+                      <span className="font-semibold text-gray-900">Ümumi Cəmi</span>
+                      <span className="font-bold text-blue-700 tabular-nums text-base">₼&nbsp;{grandTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+
                 </div>
 
               </div>

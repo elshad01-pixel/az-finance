@@ -17,6 +17,7 @@ export interface InvoiceForPDF {
   clientEmail:   string
   line_items:    LineItem[]
   amount:        number
+  vat_applied?:  boolean
 }
 
 export interface CompanyForPDF {
@@ -98,7 +99,8 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
       : [{ description: 'Professional Services', quantity: 1, unit_price: invoice.amount }]
 
   const subtotal   = items.reduce((s, i) => s + i.quantity * i.unit_price, 0)
-  const vatAmount  = company.vat_registered ? subtotal * 0.18 : 0
+  const showVat    = invoice.vat_applied ?? company.vat_registered
+  const vatAmount  = showVat ? subtotal * 0.18 : 0
   const grandTotal = subtotal + vatAmount
 
   // ── Column boundary shared by dates row and FROM/BILL TO ──────────────
@@ -310,7 +312,7 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
   doc.text(money(subtotal), W - MARGIN, totY, { align: 'right' })
   totY += 7
 
-  if (company.vat_registered) {
+  if (showVat) {
     doc.setFont('Roboto', 'normal')
     doc.setTextColor(107, 114, 128)
     doc.text('ƏDV (18%):', totX, totY)
@@ -330,7 +332,7 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
   doc.setFontSize(10.5)
   doc.setFont('Roboto', 'bold')
   doc.setTextColor(255, 255, 255)
-  doc.text('CƏMİ (TOTAL):', totX, totY + 7.5)
+  doc.text('ÜMUMİ CƏMİ:', totX, totY + 7.5)
   doc.text(money(grandTotal), W - MARGIN - 2, totY + 7.5, { align: 'right' })
   totY += 20
 
