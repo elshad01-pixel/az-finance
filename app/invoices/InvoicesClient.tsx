@@ -410,15 +410,13 @@ export default function InvoicesClient() {
         closeModal()
       }
     } else {
-      // Query the DB for the actual latest invoice number to avoid stale-state collisions
-      const { data: lastRow } = await supabase
-        .from('invoices')
-        .select('number')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      const lastNum = lastRow?.number ? (parseInt(lastRow.number.replace(/\D+/, '')) || 1000) : 1000
-      const number = `INV-${lastNum + 1}`
+      // Find the highest existing invoice number to avoid unique-key collisions
+      const { data: allNums } = await supabase.from('invoices').select('number')
+      const maxNum = (allNums ?? []).reduce((max, row) => {
+        const n = parseInt((row.number ?? '').replace(/\D+/g, '')) || 0
+        return Math.max(max, n)
+      }, 1000)
+      const number = `INV-${maxNum + 1}`
 
       // Insert without select — avoids PGRST116 if RLS has no SELECT policy
       const { error: insertError } = await supabase
