@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { LineItem, CompanyForPDF } from '@/lib/generateInvoicePDF'
+import { useLanguage } from '@/lib/LanguageContext'
 
 interface Invoice {
   id:         number
@@ -35,6 +36,7 @@ function fmtDate(d: string) {
 }
 
 export default function InvoiceDetailModal({ invoice, onClose }: Props) {
+  const { t } = useLanguage()
   const [company, setCompany]               = useState<CompanyForPDF | null>(null)
   const [hasCompanySettings, setHasCompanySettings] = useState(true)
   const [clientAddress, setClientAddress]   = useState('')
@@ -226,10 +228,10 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-blue-900 text-white">
-                      <th className="text-left font-semibold px-4 py-3">Description</th>
-                      <th className="text-center font-semibold px-4 py-3 w-16">Qty</th>
-                      <th className="text-right font-semibold px-4 py-3 w-36">Unit Price</th>
-                      <th className="text-right font-semibold px-4 py-3 w-36">Total</th>
+                      <th className="text-left font-semibold px-4 py-3">{t('common.description')}</th>
+                      <th className="text-center font-semibold px-4 py-3 w-16">{t('common.quantity')}</th>
+                      <th className="text-right font-semibold px-4 py-3 w-36">{t('common.unitPrice')}</th>
+                      <th className="text-right font-semibold px-4 py-3 w-36">{t('common.total')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
