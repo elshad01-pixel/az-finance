@@ -511,7 +511,7 @@ export default function DashboardClient() {
         supabase.from('invoices').select('amount, date, client, number').neq('status', 'Draft').order('date', { ascending: false }).limit(5),
         supabase.from('expenses').select('amount, date, description, category').order('date', { ascending: false }).limit(5),
         supabase.from('tax_settings').select('tax_regime, business_type, simplified_eligible, employee_count, vat_registered').maybeSingle(),
-        supabase.from('invoices').select('amount').eq('status', 'Paid')
+        supabase.from('invoices').select('amount').neq('status', 'Draft')
           .gte('date', (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10) })()),
       ])
 

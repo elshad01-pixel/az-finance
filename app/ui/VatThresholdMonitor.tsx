@@ -52,7 +52,7 @@ export default function VatThresholdMonitor({ annualRevenue }: Props) {
       <div className="flex items-center justify-between mb-3">
         <div>
           <p className="text-sm font-semibold text-gray-900">ƏDV Hədd Monitoru</p>
-          <p className="text-xs text-gray-400 mt-0.5">Son 12 ay · Ödənilmiş fakturalar</p>
+          <p className="text-xs text-gray-400 mt-0.5">Son 12 ay · Ümumi dövriyyə (qaralama xaric)</p>
         </div>
         <span className={`text-sm font-bold tabular-nums ${valueColor}`}>
           {fmtK(annualRevenue)} <span className="text-gray-400 font-normal">/ {fmtK(THRESHOLD)}</span>

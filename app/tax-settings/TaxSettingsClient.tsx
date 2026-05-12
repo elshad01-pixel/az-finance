@@ -55,7 +55,7 @@ export default function TaxSettingsClient() {
     const since = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10) })()
     Promise.all([
       supabase.from('tax_settings').select('tax_regime, business_type, vat_registered, simplified_eligible, payroll_sector, employee_count').maybeSingle(),
-      supabase.from('invoices').select('amount').eq('status', 'Paid').gte('date', since),
+      supabase.from('invoices').select('amount').neq('status', 'Draft').gte('date', since),
     ]).then(([{ data: ts }, { data: inv }]) => {
       if (ts) setSettings(ts as TaxSettings)
       setAnnualRevenue((inv ?? []).reduce((s, r) => s + (Number(r.amount) || 0), 0))
