@@ -70,12 +70,12 @@ export default function VatThresholdMonitor({ annualRevenue }: Props) {
         <div className="absolute inset-y-0 left-[95%] w-px bg-orange-400 opacity-60" />
       </div>
 
-      {/* Scale labels */}
-      <div className="flex justify-between mt-1.5 text-[10px] text-gray-400">
-        <span>{pct.toFixed(1)}%</span>
-        <span className="text-yellow-500">₼160k</span>
-        <span className="text-orange-500">₼190k</span>
-        <span>₼200,000</span>
+      {/* Scale labels — positioned to match tick marks */}
+      <div className="relative mt-1 h-4 text-[10px]">
+        <span className="absolute left-0 text-gray-400">{pct.toFixed(1)}%</span>
+        <span className="absolute text-yellow-500" style={{ left: '80%', transform: 'translateX(-50%)' }}>₼160k</span>
+        <span className="absolute text-orange-500" style={{ left: '95%', transform: 'translateX(-50%)' }}>₼190k</span>
+        <span className="absolute right-0 text-gray-400">₼200k</span>
       </div>
 
       {/* Alert banner */}
