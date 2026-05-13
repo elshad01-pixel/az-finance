@@ -920,7 +920,7 @@ export default function PayrollClient() {
                           </span>
                         </td>
                         <td className="px-5 py-3.5">
-                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-2">
                             <button onClick={() => { setEditingEmpId(emp.id); setEmpForm({ full_name: emp.full_name, position: emp.position, gross_salary: String(emp.gross_salary), employment_type: emp.employment_type, status: emp.status, start_date: emp.start_date, is_main_workplace: emp.is_main_workplace, payroll_sector: emp.payroll_sector }); setShowEmpModal(true) }}
                               className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 transition-colors">
                               {t('common.edit')}
