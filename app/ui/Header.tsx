@@ -12,6 +12,7 @@ const PATH_TITLE: Record<string, TranslationKey> = {
   '/invoices':          'page.invoices',
   '/expenses':          'page.expenses',
   '/clients':           'page.clients',
+  '/vendors':           'page.vendors',
   '/reports':           'page.reports',
   '/tax-settings':      'page.taxSettings',
   '/company-settings':  'page.companySettings',
