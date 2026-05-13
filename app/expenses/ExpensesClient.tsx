@@ -98,6 +98,7 @@ export default function ExpensesClient() {
   // ── UI state ─────────────────────────────────────────────────────────────
   const [showModal,      setShowModal]      = useState(false)
   const [saving,         setSaving]         = useState(false)
+  const [saveError,      setSaveError]      = useState<string | null>(null)
   const [filterCat,      setFilterCat]      = useState<MainCategory | 'All'>('All')
   const [dateFilter,     setDateFilter]     = useState<DateFilter>('thisMonth')
   const [search,         setSearch]         = useState('')
@@ -246,7 +247,7 @@ export default function ExpensesClient() {
     setEditingExpense(null)
   }
 
-  function closeModal() { setShowModal(false); resetForm() }
+  function closeModal() { setShowModal(false); resetForm(); setSaveError(null) }
 
   function openAdd() {
     resetForm()
@@ -316,33 +317,40 @@ export default function ExpensesClient() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-    const netAmount  = parseFloat(amount)
+    setSaveError(null)
+    const netAmount   = parseFloat(amount)
     const computedVat = vatOnExpense ? Math.round(netAmount * 0.18 * 100) / 100 : null
-    const nextDue    = isRecurring && date ? calcNextDue(date, frequency) : null
+    const nextDue     = isRecurring && date ? calcNextDue(date, frequency) : null
 
-    const payload = {
+    // Core columns that always exist
+    const payload: Record<string, unknown> = {
       date,
       description,
       category,
-      subcategory:    subcategory || null,
-      amount:         netAmount,
-      is_recurring:   isRecurring,
-      frequency:      isRecurring ? frequency : null,
-      next_due_date:  nextDue,
-      supplier:       supplier.trim() || null,
-      payment_method: paymentMethod || null,
-      vat_enabled:    vatOnExpense,
-      vat_amount:     computedVat,
-      notes:          notes.trim() || null,
-      vendor_id:      vendorId,
+      subcategory:   subcategory || null,
+      amount:        netAmount,
+      is_recurring:  isRecurring,
+      frequency:     isRecurring ? frequency : null,
+      next_due_date: nextDue,
     }
+
+    // New columns from migration 009 — only include if they have a value
+    if (supplier.trim())  payload.supplier       = supplier.trim()
+    if (paymentMethod)    payload.payment_method  = paymentMethod
+    if (vatOnExpense)   { payload.vat_enabled     = true; payload.vat_amount = computedVat }
+    if (notes.trim())     payload.notes           = notes.trim()
+
+    // New column from migration 011 — only include if a vendor is actually selected
+    if (vendorId !== null) payload.vendor_id = vendorId
 
     if (editingExpense) {
       const { data, error } = await supabase.from('expenses').update(payload).eq('id', editingExpense.id).select().single()
-      if (!error && data) setExpenses(prev => prev.map(e => e.id === editingExpense.id ? (data as Expense) : e))
+      if (error) { setSaveError(error.message); setSaving(false); return }
+      if (data) setExpenses(prev => prev.map(e => e.id === editingExpense.id ? (data as Expense) : e))
     } else {
       const { data, error } = await supabase.from('expenses').insert(payload).select().single()
-      if (!error && data) setExpenses(prev => [data as Expense, ...prev])
+      if (error) { setSaveError(error.message); setSaving(false); return }
+      if (data) setExpenses(prev => [data as Expense, ...prev])
     }
     setSaving(false)
     closeModal()
@@ -971,6 +979,13 @@ export default function ExpensesClient() {
                 </div>
 
               </div>
+
+              {/* Save error */}
+              {saveError && (
+                <div className="mx-6 mb-2 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium">
+                  {saveError}
+                </div>
+              )}
 
               {/* Footer */}
               <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
