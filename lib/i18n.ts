@@ -339,6 +339,31 @@ const en = {
   'exp.quickAdd':       'Quick Add',
   'exp.templateSaved':  'Template saved',
   'exp.deleteTemplate': 'Remove template',
+
+  // ── Expense improvements ─────────────────────────────────────────────────
+  'exp.editExpense':         'Edit Expense',
+  'exp.search':              'Search',
+  'exp.searchPlaceholder':   'Search by description or supplier…',
+  'exp.thisMonth':           'This Month',
+  'exp.lastMonth':           'Last Month',
+  'exp.thisQuarter':         'This Quarter',
+  'exp.thisYear':            'This Year',
+  'exp.allTime':             'All',
+  'exp.totalThisMonth':      'Total This Month',
+  'exp.recurringMonthly':    'Recurring Monthly',
+  'exp.overdueCount':        'Overdue',
+  'exp.supplier':            'Supplier / Vendor',
+  'exp.paymentMethod':       'Payment Method',
+  'exp.paymentBank':         'Bank Transfer',
+  'exp.paymentCash':         'Cash',
+  'exp.paymentCard':         'Card',
+  'exp.paymentCheque':       'Cheque',
+  'exp.notes':               'Notes',
+  'exp.uploadReceipt':       'Upload Receipt',
+  'exp.vatOnExpense':        'VAT on this expense',
+  'exp.netAmount':           'Net Amount',
+  'exp.vatAmount':           'VAT (18%)',
+  'exp.noMatch':             'No expenses match your search or filter.',
 } as const
 
 const az: Record<keyof typeof en, string> = {
@@ -680,6 +705,31 @@ const az: Record<keyof typeof en, string> = {
   'exp.quickAdd':       'Sürətli Əlavə',
   'exp.templateSaved':  'Şablon saxlanıldı',
   'exp.deleteTemplate': 'Şablonu sil',
+
+  // ── Expense improvements ─────────────────────────────────────────────────
+  'exp.editExpense':         'Xərci Redaktə Et',
+  'exp.search':              'Axtar',
+  'exp.searchPlaceholder':   'Təsvir və ya təchizatçı ilə axtar…',
+  'exp.thisMonth':           'Bu Ay',
+  'exp.lastMonth':           'Keçən Ay',
+  'exp.thisQuarter':         'Bu Rüb',
+  'exp.thisYear':            'Bu İl',
+  'exp.allTime':             'Hamısı',
+  'exp.totalThisMonth':      'Bu Ayki Cəmi',
+  'exp.recurringMonthly':    'Aylıq Dövri',
+  'exp.overdueCount':        'Gecikmiş',
+  'exp.supplier':            'Təchizatçı / Satıcı',
+  'exp.paymentMethod':       'Ödəniş Üsulu',
+  'exp.paymentBank':         'Bank Köçürməsi',
+  'exp.paymentCash':         'Nağd',
+  'exp.paymentCard':         'Kart',
+  'exp.paymentCheque':       'Çek',
+  'exp.notes':               'Qeyd',
+  'exp.uploadReceipt':       'Sənəd Yüklə',
+  'exp.vatOnExpense':        'Bu xərcdə ƏDV var',
+  'exp.netAmount':           'Xalis Məbləğ',
+  'exp.vatAmount':           'ƏDV (18%)',
+  'exp.noMatch':             'Axtarış və ya filtrə uyğun xərc tapılmadı.',
 } as const
 
 export const translations = { en, az } as const
