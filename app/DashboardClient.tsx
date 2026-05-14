@@ -469,6 +469,11 @@ export default function DashboardClient() {
   const [activity,      setActivity]      = useState<ActivityItem[]>([])
   const [annualRevenue, setAnnualRevenue] = useState(0)
   const [vatRegistered, setVatRegistered] = useState(false)
+  const [expBasis,      setExpBasis]      = useState<'accrual' | 'cash'>('accrual')
+  const [currExpCash,   setCurrExpCash]   = useState(0)
+  const [prevExpCash,   setPrevExpCash]   = useState(0)
+  const [pendingExps,   setPendingExps]   = useState<Array<{ date: string; description: string; amount: number }>>([])
+
 
   useEffect(() => {
     async function load() {
@@ -498,6 +503,9 @@ export default function DashboardClient() {
         { data: recentExp  },
         { data: taxRow     },
         { data: annualData },
+        { data: expCashCurrData, error: expCashCurrErr },
+        { data: expCashPrevData, error: expCashPrevErr },
+        { data: pendingData },
       ] = await Promise.all([
         applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), sel),
         applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), prev),
@@ -513,6 +521,9 @@ export default function DashboardClient() {
         supabase.from('tax_settings').select('tax_regime, business_type, simplified_eligible, employee_count, vat_registered').maybeSingle(),
         supabase.from('invoices').select('amount').neq('status', 'Draft')
           .gte('date', (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10) })()),
+        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid'), sel),
+        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid'), prev),
+        supabase.from('expenses').select('date, description, amount').eq('payment_status', 'pending').order('date'),
       ])
 
       const ts        = taxRow as TaxSettings | null
@@ -536,6 +547,9 @@ export default function DashboardClient() {
       setTaxSettings(ts)
       setAnnualRevenue(sumRows(annualData))
       setVatRegistered(ts?.vat_registered ?? false)
+      setCurrExpCash(expCashCurrErr ? cExpenses : sumRows(expCashCurrData))
+      setPrevExpCash(expCashPrevErr ? pExpenses : sumRows(expCashPrevData))
+      setPendingExps((pendingData as Array<{ date: string; description: string; amount: number }>) ?? [])
 
       const shortLabels = lang === 'az' ? MS_AZ : MS_EN
       setChartData(chartMonths.map(({ year, month }) => {
@@ -569,15 +583,17 @@ export default function DashboardClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter, refreshKey, lang])
 
-  const currNet = currRevenue - currExpenses - currTax
-  const prevNet = prevRevenue - prevExpenses - prevTax
+  const activeExpenses = expBasis === 'accrual' ? currExpenses : currExpCash
+  const activePrevExp  = expBasis === 'accrual' ? prevExpenses : prevExpCash
+  const currNet = currRevenue - activeExpenses - currTax
+  const prevNet = prevRevenue - activePrevExp  - prevTax
 
   const canCompare     = filter.preset !== 'all_time'
   const noChg          = { text: '—', positive: true, neutral: true }
-  const revChg         = canCompare ? pctChange(currRevenue,  prevRevenue)  : noChg
-  const cashChg        = canCompare ? pctChange(currCashFlow, prevCashFlow) : noChg
-  const expChg         = canCompare ? pctChange(currExpenses, prevExpenses) : noChg
-  const netChg         = canCompare ? pctChange(currNet,      prevNet)      : noChg
+  const revChg         = canCompare ? pctChange(currRevenue,    prevRevenue)   : noChg
+  const cashChg        = canCompare ? pctChange(currCashFlow,   prevCashFlow)  : noChg
+  const expChg         = canCompare ? pctChange(activeExpenses, activePrevExp) : noChg
+  const netChg         = canCompare ? pctChange(currNet,        prevNet)       : noChg
   const expBadgePos    = expChg.neutral ? true : !expChg.positive
 
   const label = periodLabel(filter, now, lang)
@@ -636,7 +652,7 @@ export default function DashboardClient() {
     },
     {
       titleKey:      'dash.totalExpenses' as const,
-      value:         fmtAmt(currExpenses),
+      value:         fmtAmt(activeExpenses),
       badge:         loading ? '…' : expChg.text,
       badgePositive: expBadgePos,
       note:          label,
@@ -659,9 +675,9 @@ export default function DashboardClient() {
       note:          label,
       breakdown: loading ? undefined : [
         { label: t('dash.revenue'),                                    amount: fmtAmt(currRevenue) },
-        { label: `− ${t('dash.expenses')}`,                           amount: fmtAmt(currExpenses), negative: true },
-        { label: `− ${t('dash.estTax')}${taxRateLabel(taxSettings)}`, amount: fmtAmt(currTax),      negative: true },
-        { label: `= ${t('dash.netProfitAfterTax')}`,                  amount: fmtAmt(currNet),      total: true },
+        { label: `− ${t('dash.expenses')}`,                           amount: fmtAmt(activeExpenses), negative: true },
+        { label: `− ${t('dash.estTax')}${taxRateLabel(taxSettings)}`, amount: fmtAmt(currTax),        negative: true },
+        { label: `= ${t('dash.netProfitAfterTax')}`,                  amount: fmtAmt(currNet),        total: true },
       ],
       borderAccent: 'border-l-green-500',
       gradient:     'from-green-50 to-white',
@@ -753,10 +769,29 @@ export default function DashboardClient() {
           </div>
         )}
 
+        <div className="flex items-center gap-1 ml-auto mr-1 bg-gray-100 rounded-lg p-0.5" title={lang === 'az' ? 'Xərc hesablama üsulu' : 'Expense basis'}>
+          <button
+            onClick={() => setExpBasis('accrual')}
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+              expBasis === 'accrual' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t('dash.accrualBasis')}
+          </button>
+          <button
+            onClick={() => setExpBasis('cash')}
+            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+              expBasis === 'cash' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {t('dash.cashBasis')}
+          </button>
+        </div>
+
         <button
           onClick={() => setRefreshKey(k => k + 1)}
           title={lang === 'az' ? 'Yenilə' : 'Refresh'}
-          className="ml-auto p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+          className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -819,6 +854,40 @@ export default function DashboardClient() {
           </div>
         ))}
       </div>
+
+      {/* Pending Expenses */}
+      {!loading && pendingExps.length > 0 && (
+        <div className="mt-5 bg-white rounded-xl shadow-sm border border-orange-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+              {t('dash.pendingExpenses')}
+              <span className="text-xs font-medium text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-full">{pendingExps.length}</span>
+            </h3>
+            <Link href="/expenses" className="text-xs text-blue-500 hover:underline">{t('exp.viewAll')}</Link>
+          </div>
+          <div className="space-y-1">
+            {pendingExps.slice(0, 5).map((exp, i) => {
+              const isOverdue = exp.date < new Date().toISOString().slice(0, 10)
+              return (
+                <div key={i} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div>
+                    <p className="text-sm text-gray-700">{exp.description}</p>
+                    <p className={`text-xs ${isOverdue ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+                      {new Date(exp.date + 'T12:00:00').toLocaleDateString(
+                        lang === 'az' ? 'az-AZ' : 'en-GB',
+                        { day: '2-digit', month: 'short', year: 'numeric' },
+                      )}
+                      {isOverdue && (lang === 'az' ? ' · Gecikmiş' : ' · Overdue')}
+                    </p>
+                  </div>
+                  <span className="text-sm font-semibold text-orange-600 tabular-nums">{fmtAmt(exp.amount)}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* VAT Threshold Monitor */}
       {!loading && !vatRegistered && (

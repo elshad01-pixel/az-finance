@@ -66,6 +66,9 @@ const en = {
   'dash.revenueVsExp':    'Revenue vs Expenses',
   'dash.recentActivity':  'Recent Activity',
   'dash.quickActions':    'Quick Actions',
+  'dash.accrualBasis':    'Accrual',
+  'dash.cashBasis':       'Cash',
+  'dash.pendingExpenses': 'Pending Expenses',
 
   // ── Invoices ─────────────────────────────────────────────────────────────
   'inv.newInvoice':        'New Invoice',
@@ -394,6 +397,13 @@ const en = {
   'exp.netAmount':           'Net Amount',
   'exp.vatAmount':           'VAT (18%)',
   'exp.noMatch':             'No expenses match your search or filter.',
+  'exp.paymentStatus':       'Payment Status',
+  'exp.paid':                'Paid',
+  'exp.pending':             'Pending',
+  'exp.cancelled':           'Cancelled',
+  'exp.paymentDate':         'Payment Date',
+  'exp.pendingPayments':     'Pending Payments',
+  'exp.noPending':           'No pending expenses',
 } as const
 
 const az: Record<keyof typeof en, string> = {
@@ -462,6 +472,9 @@ const az: Record<keyof typeof en, string> = {
   'dash.revenueVsExp':    'Gəlir vs Xərclər',
   'dash.recentActivity':  'Son Fəaliyyət',
   'dash.quickActions':    'Sürətli Əməliyyatlar',
+  'dash.accrualBasis':    'Hesablama',
+  'dash.cashBasis':       'Nağd',
+  'dash.pendingExpenses': 'Gözləyən Xərclər',
 
   // ── Invoices ─────────────────────────────────────────────────────────────
   'inv.newInvoice':        'Yeni Faktura',
@@ -790,6 +803,13 @@ const az: Record<keyof typeof en, string> = {
   'exp.netAmount':           'Xalis Məbləğ',
   'exp.vatAmount':           'ƏDV (18%)',
   'exp.noMatch':             'Axtarış və ya filtrə uyğun xərc tapılmadı.',
+  'exp.paymentStatus':       'Ödəniş Statusu',
+  'exp.paid':                'Ödənilib',
+  'exp.pending':             'Gözləyir',
+  'exp.cancelled':           'Ləğv edilib',
+  'exp.paymentDate':         'Ödəniş Tarixi',
+  'exp.pendingPayments':     'Gözləyən Ödənişlər',
+  'exp.noPending':           'Gözləyən xərc yoxdur',
 } as const
 
 export const translations = { en, az } as const

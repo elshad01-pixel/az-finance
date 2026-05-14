@@ -12,6 +12,8 @@ import {
   type MainCategory, type Frequency,
 } from '@/lib/categories'
 
+type PaymentStatus = 'paid' | 'pending' | 'cancelled'
+
 interface Expense {
   id:             number
   date:           string
@@ -29,6 +31,8 @@ interface Expense {
   notes:          string | null
   receipt_url:    string | null
   vendor_id:      number | null
+  payment_status?: PaymentStatus
+  payment_date?:   string | null
 }
 
 interface Vendor {
@@ -123,10 +127,12 @@ export default function ExpensesClient() {
   const [amount,        setAmount]        = useState('')
   const [isRecurring,   setIsRecurring]   = useState(false)
   const [frequency,     setFrequency]     = useState<Frequency>('monthly')
-  const [supplier,      setSupplier]      = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('')
-  const [vatOnExpense,  setVatOnExpense]  = useState(false)
-  const [notes,         setNotes]         = useState('')
+  const [supplier,       setSupplier]       = useState('')
+  const [paymentMethod,  setPaymentMethod]  = useState('')
+  const [vatOnExpense,   setVatOnExpense]   = useState(false)
+  const [notes,          setNotes]          = useState('')
+  const [paymentStatus,  setPaymentStatus]  = useState<PaymentStatus>('paid')
+  const [paymentDate,    setPaymentDate]    = useState('')
 
   // ── Close vendor dropdown on outside click ────────────────────────────────
   useEffect(() => {
@@ -144,7 +150,7 @@ export default function ExpensesClient() {
   useEffect(() => {
     Promise.all([
       supabase.from('expenses')
-        .select('id, date, description, category, subcategory, amount, is_recurring, frequency, next_due_date, supplier, payment_method, vat_enabled, vat_amount, notes, receipt_url, vendor_id')
+        .select('*')
         .order('date', { ascending: false }),
       supabase.from('vendors').select('id, name, category, phone, email').order('name'),
       supabase.from('expense_templates').select('*').order('created_at', { ascending: false }),
@@ -181,7 +187,9 @@ export default function ExpensesClient() {
   }
 
   function isOverdue(exp: Expense) {
-    return exp.is_recurring && exp.next_due_date && daysUntil(exp.next_due_date) < 0
+    if (exp.is_recurring && exp.next_due_date && daysUntil(exp.next_due_date) < 0) return true
+    if ((exp.payment_status ?? 'paid') === 'pending' && exp.date < todayIso()) return true
+    return false
   }
 
   function tCat(name: string) {
@@ -197,6 +205,23 @@ export default function ExpensesClient() {
     if (!cat) return null
     const key = VENDOR_CAT_KEYS[cat as VendorCategory]
     return key ? t(key) : cat
+  }
+
+  function statusBadge(exp: Expense): { label: string; cls: string } {
+    const status = exp.payment_status ?? 'paid'
+    if (status === 'cancelled') return { label: t('exp.cancelled'), cls: 'bg-gray-100 text-gray-500' }
+    if (status === 'pending') {
+      const overdue = exp.date < todayIso()
+      if (overdue) return { label: t('exp.overdue'), cls: 'bg-red-100 text-red-700' }
+      return { label: t('exp.pending'), cls: 'bg-orange-100 text-orange-700' }
+    }
+    return { label: t('exp.paid'), cls: 'bg-green-100 text-green-700' }
+  }
+
+  function handlePaymentStatusChange(s: PaymentStatus) {
+    setPaymentStatus(s)
+    if (s === 'paid' && !paymentDate) setPaymentDate(todayIso())
+    if (s !== 'paid') setPaymentDate('')
   }
 
   // ── Vendor combobox helpers ───────────────────────────────────────────────
@@ -244,6 +269,7 @@ export default function ExpensesClient() {
     setSubcategory(''); setAmount(''); setIsRecurring(false); setFrequency('monthly')
     setSupplier(''); setPaymentMethod(''); setVatOnExpense(false); setNotes('')
     setVendorId(null); setVendorSearch(''); setShowVendorDropdown(false); setShowQuickAdd(false)
+    setPaymentStatus('paid'); setPaymentDate(todayIso())
     setEditingExpense(null)
   }
 
@@ -271,6 +297,8 @@ export default function ExpensesClient() {
     setNotes(exp.notes ?? '')
     setVendorId(exp.vendor_id ?? null)
     setVendorSearch('')
+    setPaymentStatus(exp.payment_status ?? 'paid')
+    setPaymentDate(exp.payment_date ?? '')
     setShowModal(true)
   }
 
@@ -343,6 +371,11 @@ export default function ExpensesClient() {
     // New column from migration 011 — only include if a vendor is actually selected
     if (vendorId !== null) payload.vendor_id = vendorId
 
+    // New columns from migration 012
+    if (paymentStatus !== 'paid' || editingExpense) payload.payment_status = paymentStatus
+    if (paymentStatus === 'paid' && paymentDate) payload.payment_date = paymentDate
+    else if (editingExpense) payload.payment_date = null
+
     if (editingExpense) {
       const { data, error } = await supabase.from('expenses').update(payload).eq('id', editingExpense.id).select().single()
       if (error) { setSaveError(error.message); setSaving(false); return }
@@ -372,6 +405,13 @@ export default function ExpensesClient() {
       if (!insertRes.error && insertRes.data) return [insertRes.data as Expense, ...updated]
       return updated
     })
+  }
+
+  async function markExpensePaid(id: number) {
+    const { data, error } = await supabase
+      .from('expenses').update({ payment_status: 'paid', payment_date: todayIso() })
+      .eq('id', id).select().single()
+    if (!error && data) setExpenses(prev => prev.map(e => e.id === id ? (data as Expense) : e))
   }
 
   async function deleteExpense(id: number) {
@@ -596,6 +636,9 @@ export default function ExpensesClient() {
                       {exp.subcategory && !exp.supplier && (
                         <p className="text-xs text-gray-400 mt-0.5">{tSub(exp.subcategory)}</p>
                       )}
+                      {(() => { const sb = statusBadge(exp); return sb.label !== t('exp.paid') ? (
+                        <span className={`mt-1 inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${sb.cls}`}>{sb.label}</span>
+                      ) : null })()}
                     </td>
                     <td className="px-5 py-3.5">
                       <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${CATEGORY_STYLES[cat] ?? 'bg-gray-100 text-gray-600'}`}>
@@ -634,6 +677,15 @@ export default function ExpensesClient() {
                       <div className="flex items-center justify-end gap-1.5">
                         {exp.is_recurring && (
                           <button onClick={() => markPaid(exp)} title={t('exp.markPaid')}
+                            className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 hover:bg-green-50 px-2 py-1.5 rounded-lg border border-green-200 transition-colors whitespace-nowrap">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            {t('exp.markPaid')}
+                          </button>
+                        )}
+                        {!exp.is_recurring && (exp.payment_status ?? 'paid') === 'pending' && (
+                          <button onClick={() => markExpensePaid(exp.id)} title={t('exp.markPaid')}
                             className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-700 hover:bg-green-50 px-2 py-1.5 rounded-lg border border-green-200 transition-colors whitespace-nowrap">
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -968,6 +1020,36 @@ export default function ExpensesClient() {
                     </p>
                   )}
                 </div>
+
+                {/* Payment Status */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.paymentStatus')}</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      { value: 'paid'      as PaymentStatus, label: t('exp.paid'),      cls: 'border-green-500 bg-green-600 text-white', outline: 'border-gray-200 text-gray-600 hover:border-green-300' },
+                      { value: 'pending'   as PaymentStatus, label: t('exp.pending'),   cls: 'border-orange-500 bg-orange-500 text-white', outline: 'border-gray-200 text-gray-600 hover:border-orange-300' },
+                      { value: 'cancelled' as PaymentStatus, label: t('exp.cancelled'), cls: 'border-gray-400 bg-gray-400 text-white',   outline: 'border-gray-200 text-gray-600 hover:border-gray-300' },
+                    ]).map(opt => (
+                      <button key={opt.value} type="button"
+                        onClick={() => handlePaymentStatusChange(opt.value)}
+                        className={`py-2 rounded-lg text-xs font-semibold transition-colors border ${
+                          paymentStatus === opt.value ? opt.cls : opt.outline
+                        }`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Payment Date (shown when paid) */}
+                {paymentStatus === 'paid' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.paymentDate')}</label>
+                    <input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    />
+                  </div>
+                )}
 
                 {/* Notes */}
                 <div>
