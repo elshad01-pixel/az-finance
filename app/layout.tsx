@@ -3,6 +3,7 @@ import { Geist } from "next/font/google";
 import "./globals.css";
 import LayoutWrapper from "@/app/ui/LayoutWrapper";
 import { LanguageProvider } from "@/lib/LanguageContext";
+import { CompanyProvider } from "@/lib/CompanyContext";
 
 const geist = Geist({
   variable: "--font-geist-sans",
@@ -23,7 +24,9 @@ export default function RootLayout({
     <html lang="en" className={`${geist.variable} h-screen overflow-hidden antialiased`}>
       <body className="h-full flex bg-gray-50">
         <LanguageProvider>
-          <LayoutWrapper>{children}</LayoutWrapper>
+          <CompanyProvider>
+            <LayoutWrapper>{children}</LayoutWrapper>
+          </CompanyProvider>
         </LanguageProvider>
       </body>
     </html>

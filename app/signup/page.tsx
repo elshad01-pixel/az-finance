@@ -1,18 +1,44 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 
+interface InviteInfo {
+  company_name: string
+  role:         string
+  invited_email: string
+}
+
 export default function SignupPage() {
-  const router = useRouter()
-  const [email, setEmail]       = useState('')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm]   = useState('')
-  const [error, setError]       = useState('')
-  const [success, setSuccess]   = useState('')
-  const [loading, setLoading]   = useState(false)
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const inviteToken  = searchParams.get('invite')
+
+  const [email,     setEmail]     = useState('')
+  const [password,  setPassword]  = useState('')
+  const [confirm,   setConfirm]   = useState('')
+  const [error,     setError]     = useState('')
+  const [success,   setSuccess]   = useState('')
+  const [loading,   setLoading]   = useState(false)
+  const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null)
+  const [inviteLoading, setInviteLoading] = useState(!!inviteToken)
+
+  // Resolve invite token → company/role info
+  useEffect(() => {
+    if (!inviteToken) return
+    supabase
+      .rpc('get_invitation_by_token', { p_token: inviteToken })
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const inv = data[0] as InviteInfo
+          setInviteInfo(inv)
+          setEmail(inv.invited_email)
+        }
+        setInviteLoading(false)
+      })
+  }, [inviteToken])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -20,17 +46,32 @@ export default function SignupPage() {
     if (password.length < 6)  { setError('Password must be at least 6 characters.'); return }
     setLoading(true)
     setError('')
-    const { data, error } = await supabase.auth.signUp({ email, password })
-    if (error) {
-      setError(error.message)
+
+    const { data, error: signUpError } = await supabase.auth.signUp({ email, password })
+
+    if (signUpError) {
+      setError(signUpError.message)
       setLoading(false)
-    } else if (data.session) {
+      return
+    }
+
+    // If signup gave us an immediate session, go to dashboard
+    // CompanyContext will auto-accept the pending invitation on load
+    if (data.session) {
       router.push('/')
       router.refresh()
     } else {
       setSuccess('Account created! Check your email for a confirmation link.')
       setLoading(false)
     }
+  }
+
+  if (inviteLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800">
+        <div className="text-blue-200 text-sm">Loading invitation…</div>
+      </div>
+    )
   }
 
   return (
@@ -70,8 +111,28 @@ export default function SignupPage() {
           ) : (
             <>
               <div className="mb-7">
-                <h2 className="text-xl font-bold text-gray-900">Create your account</h2>
-                <p className="text-sm text-gray-500 mt-1">Get started — it only takes a minute</p>
+                {inviteInfo ? (
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900">You&apos;ve been invited</h2>
+                    <div className="mt-3 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0 mt-0.5">
+                        {inviteInfo.company_name[0].toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">{inviteInfo.company_name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Joining as{' '}
+                          <span className="font-semibold capitalize text-blue-700">{inviteInfo.role}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900">Create your account</h2>
+                    <p className="text-sm text-gray-500 mt-1">Get started — it only takes a minute</p>
+                  </>
+                )}
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
@@ -88,9 +149,15 @@ export default function SignupPage() {
                     required
                     value={email}
                     onChange={e => setEmail(e.target.value)}
+                    readOnly={!!inviteInfo}
                     placeholder="you@example.com"
-                    className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                    className={`w-full border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition ${inviteInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                   />
+                  {inviteInfo && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      This email was specified in the invitation.
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -122,7 +189,11 @@ export default function SignupPage() {
                   disabled={loading}
                   className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-lg transition-colors shadow-sm disabled:opacity-60 text-sm"
                 >
-                  {loading ? 'Creating account…' : 'Create Account'}
+                  {loading
+                    ? 'Creating account…'
+                    : inviteInfo
+                      ? `Join ${inviteInfo.company_name}`
+                      : 'Create Account'}
                 </button>
               </form>
 

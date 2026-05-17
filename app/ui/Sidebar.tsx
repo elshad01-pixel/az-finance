@@ -1,20 +1,22 @@
 'use client'
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useLanguage } from "@/lib/LanguageContext";
-import type { TranslationKey } from "@/lib/i18n";
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { useLanguage } from '@/lib/LanguageContext'
+import { useCompany, type Role } from '@/lib/CompanyContext'
+import type { TranslationKey } from '@/lib/i18n'
 
 interface NavItem {
-  labelKey: TranslationKey
-  href:     string
-  icon:     React.ReactNode
+  labelKey:  TranslationKey
+  href:      string
+  icon:      React.ReactNode
+  minRole?:  Role  // minimum role required; undefined = everyone
 }
 
 const navItems: NavItem[] = [
   {
     labelKey: 'nav.dashboard',
-    href: "/",
+    href: '/',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -24,7 +26,8 @@ const navItems: NavItem[] = [
   },
   {
     labelKey: 'nav.invoices',
-    href: "/invoices",
+    href: '/invoices',
+    minRole: 'finance',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -34,7 +37,8 @@ const navItems: NavItem[] = [
   },
   {
     labelKey: 'nav.expenses',
-    href: "/expenses",
+    href: '/expenses',
+    minRole: 'finance',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -44,7 +48,8 @@ const navItems: NavItem[] = [
   },
   {
     labelKey: 'nav.clients',
-    href: "/clients",
+    href: '/clients',
+    minRole: 'finance',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -54,7 +59,8 @@ const navItems: NavItem[] = [
   },
   {
     labelKey: 'nav.vendors',
-    href: "/vendors",
+    href: '/vendors',
+    minRole: 'finance',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -64,7 +70,8 @@ const navItems: NavItem[] = [
   },
   {
     labelKey: 'nav.reports',
-    href: "/reports",
+    href: '/reports',
+    minRole: 'finance',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -74,7 +81,8 @@ const navItems: NavItem[] = [
   },
   {
     labelKey: 'nav.taxSettings',
-    href: "/tax-settings",
+    href: '/tax-settings',
+    minRole: 'manager',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -84,7 +92,8 @@ const navItems: NavItem[] = [
   },
   {
     labelKey: 'nav.payroll',
-    href: "/payroll",
+    href: '/payroll',
+    minRole: 'manager',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -94,7 +103,8 @@ const navItems: NavItem[] = [
   },
   {
     labelKey: 'nav.companySettings',
-    href: "/company-settings",
+    href: '/company-settings',
+    minRole: 'manager',
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -102,52 +112,94 @@ const navItems: NavItem[] = [
       </svg>
     ),
   },
-];
+]
+
+// Role hierarchy for visibility checks
+const ROLE_RANK: Record<Role, number> = {
+  employee: 0,
+  finance:  1,
+  manager:  2,
+  admin:    3,
+}
+
+const ROLE_BADGE: Record<Role, { label: string; cls: string }> = {
+  admin:    { label: 'Admin',    cls: 'bg-red-500/20 text-red-300 border border-red-500/30' },
+  manager:  { label: 'Manager',  cls: 'bg-purple-500/20 text-purple-300 border border-purple-500/30' },
+  finance:  { label: 'Finance',  cls: 'bg-blue-400/20 text-blue-300 border border-blue-400/30' },
+  employee: { label: 'Employee', cls: 'bg-gray-500/20 text-gray-300 border border-gray-500/30' },
+}
 
 export default function Sidebar() {
-  const pathname = usePathname();
-  const { t }    = useLanguage();
+  const pathname = usePathname()
+  const { t }   = useLanguage()
+  const { role, user, company, loading } = useCompany()
+
+  const userRank = role ? ROLE_RANK[role] : 3 // default to admin rank while loading
+
+  const visibleNavItems = navItems.filter(item => {
+    if (!item.minRole) return true
+    if (loading || !role) return true // show all while loading
+    return userRank >= ROLE_RANK[item.minRole]
+  })
+
+  const initials    = user?.email?.[0].toUpperCase() ?? 'U'
+  const displayName = user?.email?.split('@')[0] ?? 'User'
+  const badge       = role ? ROLE_BADGE[role] : null
 
   return (
     <aside className="w-72 bg-blue-900 text-white flex flex-col shrink-0 h-full border-r border-blue-800">
+
+      {/* ── Logo ─────────────────────────────────────────────────── */}
       <div className="px-6 py-6 border-b border-blue-800">
         <span className="text-xl font-bold tracking-tight">
           Az<span className="text-blue-300">Finance</span>
         </span>
-        <p className="text-blue-400 text-xs mt-1">Financial Management</p>
+        {company?.name ? (
+          <p className="text-blue-400 text-xs mt-1 truncate">{company.name}</p>
+        ) : (
+          <p className="text-blue-400 text-xs mt-1">Financial Management</p>
+        )}
       </div>
 
-      <nav className="flex-1 px-4 py-6 space-y-1.5">
-        {navItems.map((item) => {
-          const isActive = pathname === item.href;
+      {/* ── Navigation ───────────────────────────────────────────── */}
+      <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
+        {visibleNavItems.map((item) => {
+          const isActive = pathname === item.href
           return (
             <Link
               key={item.href}
               href={item.href}
               className={`flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                 isActive
-                  ? "bg-blue-700 text-white shadow-md shadow-blue-900/40"
-                  : "text-blue-200 hover:bg-blue-800/70 hover:text-white"
+                  ? 'bg-blue-700 text-white shadow-md shadow-blue-900/40'
+                  : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
               }`}
             >
               {item.icon}
               {t(item.labelKey)}
             </Link>
-          );
+          )
         })}
       </nav>
 
+      {/* ── User / Role section ───────────────────────────────────── */}
       <div className="px-4 py-5 border-t border-blue-800">
-        <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-blue-800/50 transition-colors cursor-pointer">
+        <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-blue-800/50 transition-colors">
           <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-sm font-semibold shrink-0 ring-2 ring-blue-500">
-            A
+            {initials}
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-white truncate">Admin</p>
-            <p className="text-xs text-blue-400 truncate">admin@azfinance.az</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-white truncate">{displayName}</p>
+            {badge ? (
+              <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full mt-0.5 ${badge.cls}`}>
+                {badge.label}
+              </span>
+            ) : (
+              <p className="text-xs text-blue-400 truncate">{user?.email ?? ''}</p>
+            )}
           </div>
         </div>
       </div>
     </aside>
-  );
+  )
 }
