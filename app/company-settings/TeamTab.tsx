@@ -46,16 +46,22 @@ export default function TeamTab() {
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [loading,     setLoading]     = useState(true)
 
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole,  setInviteRole]  = useState<Role>('employee')
-  const [inviting,    setInviting]    = useState(false)
-  const [inviteError, setInviteError] = useState('')
-  const [copiedToken, setCopiedToken] = useState<string | null>(null)
-  const [removing,    setRemoving]    = useState<number | null>(null)
+  const [inviteEmail,   setInviteEmail]   = useState('')
+  const [inviteRole,    setInviteRole]    = useState<Role>('employee')
+  const [inviting,      setInviting]      = useState(false)
+  const [inviteError,   setInviteError]   = useState('')
+  const [inviteSuccess, setInviteSuccess] = useState('')
+  const [copiedToken,   setCopiedToken]   = useState<string | null>(null)
+  const [removing,      setRemoving]      = useState<number | null>(null)
 
   async function loadTeam() {
-    if (!company) return
-    const [{ data: mems }, { data: invs }] = await Promise.all([
+    if (!company) {
+      console.warn('[TeamTab] loadTeam: company is null, skipping fetch')
+      setLoading(false)
+      return
+    }
+    console.log('[TeamTab] loadTeam: fetching for company', company.id)
+    const [{ data: mems, error: memErr }, { data: invs, error: invErr }] = await Promise.all([
       supabase
         .from('company_members')
         .select('id, user_id, role, invited_email, status, created_at')
@@ -69,6 +75,8 @@ export default function TeamTab() {
         .eq('status', 'pending')
         .order('created_at', { ascending: false }),
     ])
+    if (memErr) console.error('[TeamTab] members fetch error:', memErr)
+    if (invErr) console.error('[TeamTab] invitations fetch error:', invErr)
     setMembers(mems ?? [])
     setInvitations(invs ?? [])
     setLoading(false)
@@ -78,25 +86,54 @@ export default function TeamTab() {
 
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
-    if (!company || !inviteEmail.trim()) return
-    setInviting(true)
     setInviteError('')
+    setInviteSuccess('')
 
-    const { error } = await supabase.from('company_invitations').insert({
-      company_id:    company.id,
-      invited_email: inviteEmail.toLowerCase().trim(),
-      role:          inviteRole,
-      invited_by:    membership?.user_id,
-    })
-
-    if (error) {
-      setInviteError(lang === 'az'
-        ? 'Dəvət yaradılmadı. Yenidən cəhd edin.'
-        : 'Failed to create invitation. Try again.')
-    } else {
-      setInviteEmail('')
-      await loadTeam()
+    if (!company) {
+      const msg = 'Company context not loaded — try refreshing the page. (Migration 015 may not have been applied in Supabase.)'
+      console.error('[TeamTab] handleInvite: company is null.', msg)
+      setInviteError(msg)
+      return
     }
+
+    const email = inviteEmail.toLowerCase().trim()
+    if (!email) return
+
+    setInviting(true)
+    console.log('[TeamTab] inserting invitation:', { company_id: company.id, invited_email: email, role: inviteRole })
+
+    try {
+      const { data, error } = await supabase
+        .from('company_invitations')
+        .insert({
+          company_id:    company.id,
+          invited_email: email,
+          role:          inviteRole,
+          invited_by:    membership?.user_id,
+        })
+        .select('id, invited_email, role, token, status, created_at, expires_at')
+        .single()
+
+      console.log('[TeamTab] insert result — data:', data, '| error:', error)
+
+      if (error) {
+        const detail = `${error.message}${error.details ? ' — ' + error.details : ''}${error.hint ? ' (hint: ' + error.hint + ')' : ''} [code: ${error.code}]`
+        setInviteError(`${lang === 'az' ? 'Dəvət yaradılmadı: ' : 'Failed to create invitation: '}${detail}`)
+      } else if (data) {
+        setInviteEmail('')
+        setInviteSuccess(lang === 'az' ? `Dəvət yaradıldı — ${email}` : `Invitation created for ${email}`)
+        // Optimistically prepend new invitation so list is immediately visible
+        setInvitations(prev => [data as Invitation, ...prev])
+        // Also reload to get server-canonical data
+        await loadTeam()
+      } else {
+        setInviteError(lang === 'az' ? 'Cavab alınmadı. Yenidən cəhd edin.' : 'No data returned. Please try again.')
+      }
+    } catch (err) {
+      console.error('[TeamTab] unexpected error:', err)
+      setInviteError(String(err))
+    }
+
     setInviting(false)
   }
 
@@ -136,6 +173,20 @@ export default function TeamTab() {
             </div>
           </div>
         ))}
+      </div>
+    )
+  }
+
+  if (!company) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-800">
+        <p className="font-semibold mb-1">Company context not available</p>
+        <p className="text-amber-700">
+          Migration 015 may not have been applied in Supabase. Run{' '}
+          <code className="font-mono bg-amber-100 px-1 rounded">supabase/migrations/015_multi_user.sql</code>{' '}
+          in the Supabase SQL Editor, then refresh this page.
+        </p>
+        <p className="mt-2 text-xs text-amber-600">Debug: company={String(company)}, membership={String(membership?.user_id)}</p>
       </div>
     )
   }
@@ -249,8 +300,19 @@ export default function TeamTab() {
             </button>
           </form>
 
+          {inviteSuccess && (
+            <div className="mt-3 flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 text-sm px-4 py-2.5 rounded-lg">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {inviteSuccess}
+            </div>
+          )}
+
           {inviteError && (
-            <p className="text-sm text-red-600 mt-2">{inviteError}</p>
+            <div className="mt-3 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-lg break-words">
+              <span className="font-semibold">Error: </span>{inviteError}
+            </div>
           )}
         </div>
       )}
