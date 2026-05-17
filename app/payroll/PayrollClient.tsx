@@ -741,13 +741,31 @@ export default function PayrollClient() {
     const totalCost = payloads.reduce((s, p) => s + p.total_employer_cost, 0)
     const expDate   = `${calcYear}-${String(calcMonth).padStart(2,'0')}-01`
     const monthLabel = months[calcMonth - 1]
+
+    // Check if a payroll expense already exists for this month
+    const { data: existing } = await supabase.from('expenses')
+      .select('id')
+      .eq('is_payroll_generated', true)
+      .eq('date', expDate)
+      .maybeSingle()
+
+    if (existing) {
+      const ok = window.confirm(
+        lang === 'az'
+          ? 'Bu ay üçün maaş xərci artıq mövcuddur. Təkrar yaratmaq istəyirsiniz?'
+          : 'A salary expense already exists for this month. Create another one?'
+      )
+      if (!ok) { setRunSaving(false); return }
+    }
+
     const { data: exp } = await supabase.from('expenses').insert({
-      date:        expDate,
-      description: `${lang === 'az' ? 'Əmək haqqı' : 'Payroll'} — ${monthLabel} ${calcYear}`,
-      category:    'Salaries',
-      subcategory: 'Full-time Staff',
-      amount:      parseFloat(totalCost.toFixed(2)),
-      is_recurring: false,
+      date:                 expDate,
+      description:          `${lang === 'az' ? 'Əmək haqqı' : 'Payroll'} — ${monthLabel} ${calcYear}`,
+      category:             'Salaries',
+      subcategory:          'Full-time Staff',
+      amount:               parseFloat(totalCost.toFixed(2)),
+      is_recurring:         false,
+      is_payroll_generated: true,
     }).select().single()
 
     // 3. Approve the run
