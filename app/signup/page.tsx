@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
@@ -11,7 +11,7 @@ interface InviteInfo {
   invited_email: string
 }
 
-export default function SignupPage() {
+function SignupForm() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const inviteToken  = searchParams.get('invite')
@@ -212,5 +212,13 @@ export default function SignupPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 flex items-center justify-center bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800 text-blue-200 text-sm">Yüklənir...</div>}>
+      <SignupForm />
+    </Suspense>
   )
 }
