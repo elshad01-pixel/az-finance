@@ -14,7 +14,6 @@ interface TaxSettings {
   vat_registered:      boolean
   simplified_eligible: boolean
   payroll_sector:      PayrollSector
-  employee_count:      number
 }
 
 const DEFAULTS: TaxSettings = {
@@ -23,7 +22,6 @@ const DEFAULTS: TaxSettings = {
   vat_registered:      false,
   simplified_eligible: false,
   payroll_sector:      'private_non_oil',
-  employee_count:      0,
 }
 
 const REGIME_OPTIONS: { value: TaxRegime; label: string; desc: string }[] = [
@@ -45,20 +43,23 @@ const REGIME_OPTIONS: { value: TaxRegime; label: string; desc: string }[] = [
 ]
 
 export default function TaxSettingsClient() {
-  const [settings,      setSettings]      = useState<TaxSettings>(DEFAULTS)
-  const [loading,       setLoading]       = useState(true)
-  const [saving,        setSaving]        = useState(false)
-  const [saved,         setSaved]         = useState(false)
-  const [annualRevenue, setAnnualRevenue] = useState(0)
+  const [settings,           setSettings]           = useState<TaxSettings>(DEFAULTS)
+  const [loading,            setLoading]            = useState(true)
+  const [saving,             setSaving]             = useState(false)
+  const [saved,              setSaved]              = useState(false)
+  const [annualRevenue,      setAnnualRevenue]      = useState(0)
+  const [activeEmployeeCount, setActiveEmployeeCount] = useState(0)
 
   useEffect(() => {
     const since = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10) })()
     Promise.all([
-      supabase.from('tax_settings').select('tax_regime, business_type, vat_registered, simplified_eligible, payroll_sector, employee_count').maybeSingle(),
+      supabase.from('tax_settings').select('tax_regime, business_type, vat_registered, simplified_eligible, payroll_sector').maybeSingle(),
       supabase.from('invoices').select('amount').neq('status', 'Draft').gte('date', since),
-    ]).then(([{ data: ts }, { data: inv }]) => {
+      supabase.from('employees').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+    ]).then(([{ data: ts }, { data: inv }, { count }]) => {
       if (ts) setSettings(ts as TaxSettings)
       setAnnualRevenue((inv ?? []).reduce((s, r) => s + (Number(r.amount) || 0), 0))
+      setActiveEmployeeCount(count ?? 0)
       setLoading(false)
     })
   }, [])
@@ -70,7 +71,10 @@ export default function TaxSettingsClient() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-    await supabase.from('tax_settings').upsert(settings, { onConflict: 'user_id' })
+    await supabase.from('tax_settings').upsert(
+      { ...settings, employee_count: activeEmployeeCount },
+      { onConflict: 'user_id' },
+    )
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
@@ -89,7 +93,7 @@ export default function TaxSettingsClient() {
     )
   }
 
-  const canClaimRelief = settings.tax_regime === 'simplified' && settings.employee_count >= 3
+  const canClaimRelief = settings.tax_regime === 'simplified' && activeEmployeeCount >= 3
 
   return (
     <div className="max-w-2xl">
@@ -206,15 +210,18 @@ export default function TaxSettingsClient() {
 
           <div className="mb-5">
             <label className="block text-xs font-medium text-gray-700 mb-1.5">
-              Number of Employees
+              Active Employees
             </label>
-            <input
-              type="number"
-              min={0}
-              value={settings.employee_count}
-              onChange={e => setField('employee_count', parseInt(e.target.value) || 0)}
-              className="w-32 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-            />
+            <div className="flex items-center gap-3">
+              <span className="inline-flex items-center justify-center w-12 h-9 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-sm font-bold tabular-nums">
+                {activeEmployeeCount}
+              </span>
+              <span className="text-xs text-gray-400">
+                Live count from the{' '}
+                <a href="/payroll" className="text-blue-500 hover:underline">Employees</a>
+                {' '}table — manage employees there.
+              </span>
+            </div>
           </div>
 
           <div>
@@ -256,7 +263,7 @@ export default function TaxSettingsClient() {
                 <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
                   75% tax reduction for eligible micro-businesses with a minimum of 3 employees.
                   {!canClaimRelief && (
-                    <span className="text-amber-600"> Requires at least 3 employees.</span>
+                    <span className="text-amber-600"> Requires at least 3 active employees (currently {activeEmployeeCount}).</span>
                   )}
                 </p>
               </div>

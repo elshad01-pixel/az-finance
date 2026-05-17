@@ -5,11 +5,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:agent": "tsx scripts/aytac-test-agent.ts",
+    "test:agent:keep": "tsx scripts/aytac-test-agent.ts --no-cleanup"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.3",
+    "dotenv": "^17.4.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "next": "16.2.5",
@@ -23,6 +27,7 @@
     "@types/react-dom": "^19",
     "roboto-fontface": "^0.10.0",
     "tailwindcss": "^4",
+    "tsx": "^4.22.0",
     "typescript": "^5"
   }
 }

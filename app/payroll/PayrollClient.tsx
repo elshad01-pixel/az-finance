@@ -645,6 +645,13 @@ export default function PayrollClient() {
   const wd         = officialWd + wdAdjustment
   const activeEmployees = employees.filter(e => e.status === 'active')
 
+  // Active employees not yet included in the current run's entries.
+  // Only meaningful when a run is loaded (currentRun is not null/undefined).
+  const entryEmployeeIds = new Set(entries.map(e => e.employee_id))
+  const missingEmployees = currentRun
+    ? activeEmployees.filter(emp => !entryEmployeeIds.has(emp.id))
+    : []
+
   // ── Live-computed row (using local forms, not DB entries)
   function liveCalc(emp: Employee): GrossBreakdown & PayrollResult {
     const f   = editForms[emp.id] ?? EMPTY_FORM()
@@ -684,6 +691,22 @@ export default function PayrollClient() {
     setCurrentRun(newRun)
     setEntries([])
     setEditForms(forms)
+    setRunSaving(false)
+    await loadRun(calcMonth, calcYear)
+  }
+
+  // ── Add missing employees to an existing draft run
+  async function handleRefreshEmployees() {
+    if (!currentRun || currentRun.status !== 'draft' || missingEmployees.length === 0) return
+    setRunSaving(true)
+    const payloads = missingEmployees.map(emp => {
+      const p = buildEntryPayload(emp, EMPTY_FORM(), currentRun.id, wd, calcYear, calcMonth)
+      return { ...p, avans_amount: Math.round(p.net_salary * 0.5 * 100) / 100 }
+    })
+    const { error } = await supabase.from('payroll_entries').insert(payloads)
+    if (error) { showToast(t('pay.runError'), false); setRunSaving(false); return }
+    const added = missingEmployees.map(e => e.full_name).join(', ')
+    showToast(lang === 'az' ? `${added} əlavə edildi` : `Added: ${added}`, true)
     setRunSaving(false)
     await loadRun(calcMonth, calcYear)
   }
@@ -1064,6 +1087,40 @@ export default function PayrollClient() {
           {/* Run exists — summary cards + table */}
           {!runLoading && currentRun && (
             <>
+              {/* Missing-employee warning banner */}
+              {missingEmployees.length > 0 && (
+                <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-amber-800">
+                        {lang === 'az' ? 'Diqqət' : 'Warning'}
+                      </p>
+                      <p className="text-sm text-amber-700 mt-0.5 leading-relaxed">
+                        {lang === 'az'
+                          ? `Aşağıdakı işçilər bu ay əlavə edilib, lakin mövcud əmək haqqı hesabına daxil edilməyib: ${missingEmployees.map(e => e.full_name).join(', ')}.`
+                          : `The following employees were added this month but are not included in the current payroll run: ${missingEmployees.map(e => e.full_name).join(', ')}.`
+                        }
+                      </p>
+                    </div>
+                    {currentRun.status === 'draft' && (
+                      <button
+                        onClick={handleRefreshEmployees}
+                        disabled={runSaving}
+                        className="shrink-0 flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        {lang === 'az' ? 'İşçiləri Yenilə' : 'Refresh Employees'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Summary cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
                 {[

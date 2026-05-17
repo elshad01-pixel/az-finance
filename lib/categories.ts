@@ -97,9 +97,16 @@ export const FREQUENCY_I18N: Record<Frequency, string> = {
 
 export function calcNextDue(fromDate: string, freq: Frequency): string {
   const d = new Date(fromDate + 'T12:00:00')
-  if (freq === 'monthly')        d.setMonth(d.getMonth() + 1)
-  else if (freq === 'quarterly') d.setMonth(d.getMonth() + 3)
-  else                           d.setFullYear(d.getFullYear() + 1)
+  if (freq === 'monthly') {
+    d.setDate(1)
+    d.setMonth(d.getMonth() + 1)
+  } else if (freq === 'quarterly') {
+    d.setMonth(d.getMonth() + 3)
+    d.setMonth(Math.floor(d.getMonth() / 3) * 3)
+    d.setDate(1)
+  } else {
+    d.setFullYear(d.getFullYear() + 1)
+  }
   const y   = d.getFullYear()
   const mon = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
