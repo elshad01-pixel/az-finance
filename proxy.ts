@@ -5,7 +5,7 @@ import type { NextRequest } from 'next/server'
 const PUBLIC_PATHS = ['/login', '/signup']
 
 export async function proxy(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request })
+  let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,30 +15,41 @@ export async function proxy(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({ request })
+          response = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            response.cookies.set(name, value, options)
           )
+          if (headers) {
+            Object.entries(headers).forEach(([key, value]) =>
+              response.headers.set(key, value)
+            )
+          }
         },
       },
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
-  const pathname = request.nextUrl.pathname
-  const isPublic = PUBLIC_PATHS.some(p => pathname.startsWith(p))
+  // getSession() reads from cookies — no network call, never throws AuthSessionMissingError.
+  const { data: { session } } = await supabase.auth.getSession()
 
-  if (!user && !isPublic) {
-    return NextResponse.redirect(new URL('/login', request.url))
+  const { pathname } = request.nextUrl
+  const isPublicPath = PUBLIC_PATHS.some(p => pathname.startsWith(p))
+
+  if (!session && !isPublicPath) {
+    const loginUrl = request.nextUrl.clone()
+    loginUrl.pathname = '/login'
+    return NextResponse.redirect(loginUrl)
   }
 
-  if (user && isPublic) {
-    return NextResponse.redirect(new URL('/', request.url))
+  if (session && isPublicPath) {
+    const dashUrl = request.nextUrl.clone()
+    dashUrl.pathname = '/'
+    return NextResponse.redirect(dashUrl)
   }
 
-  return supabaseResponse
+  return response
 }
 
 export const config = {
