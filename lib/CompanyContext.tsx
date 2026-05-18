@@ -85,19 +85,23 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     setLoading(true)
     setSetupError(null)
 
-    const { data: { user: authUser }, error: authErr } = await supabase.auth.getUser()
-    if (authErr) logError('getUser failed', authErr)
+    // Use getSession() — reads from localStorage, never throws AuthSessionMissingError.
+    // getUser() makes a network call and fails with AuthSessionMissingError when no session exists.
+    const { data: { session }, error: sessionErr } = await supabase.auth.getSession()
+    if (sessionErr) logError('getSession failed', sessionErr)
+
+    const authUser = session?.user ?? null
     setUser(authUser)
 
     if (!authUser) {
-      log('No authenticated user — clearing state')
+      log('No session — clearing state')
       setCompany(null)
       setMembership(null)
       setLoading(false)
       return
     }
 
-    log(`Authenticated as ${authUser.email} (${authUser.id})`)
+    log(`Session active for ${authUser.email} (${authUser.id})`)
 
     // ── Step 1: Auto-accept any pending invitation for this email ──────────
     try {
@@ -110,7 +114,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle()
 
       if (invErr) {
-        log('Invitation lookup returned error (table may not exist yet)', invErr)
+        log('Invitation lookup error (table may not exist yet)', invErr)
       } else if (pendingInv?.token) {
         log('Found pending invitation — auto-accepting', pendingInv.token)
         const { error: acceptErr } = await supabase.rpc('accept_invitation', { p_token: pendingInv.token })
@@ -180,11 +184,8 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     // ── Step 3b: Fall back to SECURITY DEFINER RPC ────────────────────────
     log('Falling back to ensure_user_has_company() RPC')
     const { data: rpcResult, error: rpcErr } = await supabase.rpc('ensure_user_has_company')
-    if (rpcErr) {
-      logError('ensure_user_has_company RPC failed', rpcErr)
-    } else {
-      log('ensure_user_has_company returned', rpcResult)
-    }
+    if (rpcErr) logError('ensure_user_has_company RPC failed', rpcErr)
+    else log('ensure_user_has_company returned', rpcResult)
 
     const { data: mem4, error: mem4Err } = await fetchMembership(authUser.id)
     if (mem4Err) logError('Re-fetch after RPC failed', mem4Err)
@@ -206,10 +207,22 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     load()
+
+    // onAuthStateChange fires on login/logout/token-refresh with the new session.
+    // The session object here is already validated — safe to use directly.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      log(`Auth state changed: ${_event}, session=${!!session}`)
+      log(`Auth state changed: ${_event}`)
+      if (!session) {
+        setUser(null)
+        setCompany(null)
+        setMembership(null)
+        setLoading(false)
+        return
+      }
+      // Re-run full load to pick up company/membership for new session
       load()
     })
+
     return () => subscription.unsubscribe()
   }, [load])
 
