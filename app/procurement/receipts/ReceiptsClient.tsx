@@ -13,7 +13,7 @@ interface GRItem { description: string; ordered_qty: number; received_qty: numbe
 interface ConfirmedPO {
   id:           string
   po_number:    string
-  vendor_id:    string
+  vendor_id:    number
   items:        POItem[]
   total_amount: number
   vendors?: { name: string } | null

@@ -15,7 +15,7 @@ interface PurchaseOrder {
   id:            string
   po_number:     string
   request_id:    string | null
-  vendor_id:     string
+  vendor_id:     number
   items:         LineItem[]
   subtotal:      number
   vat_amount:    number
@@ -30,8 +30,8 @@ interface PurchaseOrder {
   purchase_requests?: { request_number: string; title: string } | null
 }
 
-interface Vendor { id: string; name: string; voen: string | null }
-interface ApprovedPR { id: string; request_number: string; title: string; vendor_id: string | null; items: LineItem[]; total_amount: number }
+interface Vendor { id: number; name: string; voen: string | null }
+interface ApprovedPR { id: string; request_number: string; title: string; vendor_id: number | null; items: LineItem[]; total_amount: number }
 
 type POStatus = PurchaseOrder['status']
 
@@ -111,7 +111,7 @@ export default function OrdersClient() {
       const pr = approvedPRs.find(p => p.id === prId)
       if (pr) {
         setSelectedPR(prId)
-        setVendorId(pr.vendor_id ?? '')
+        setVendorId(pr.vendor_id?.toString() ?? '')
         setItems(pr.items.length > 0 ? pr.items : [EMPTY_ITEM()])
         setShowForm(true)
       }
@@ -129,7 +129,7 @@ export default function OrdersClient() {
     setSelectedPR(prId)
     const pr = approvedPRs.find(p => p.id === prId)
     if (pr) {
-      setVendorId(pr.vendor_id ?? '')
+      setVendorId(pr.vendor_id?.toString() ?? '')
       setItems(pr.items.length > 0 ? pr.items : [EMPTY_ITEM()])
     }
   }
@@ -146,7 +146,7 @@ export default function OrdersClient() {
       company_id:    company.id,
       po_number:     numData as string,
       request_id:    selectedPR || null,
-      vendor_id:     vendorId,
+      vendor_id:     Number(vendorId),
       items, subtotal, vat_amount: vatAmount, total_amount: totalAmount,
       status: 'draft',
       payment_terms: paymentTerms || null,

@@ -16,7 +16,7 @@ interface PurchaseRequest {
   requested_by:     string
   title:            string
   description:      string | null
-  vendor_id:        string | null
+  vendor_id:        number | null
   items:            LineItem[]
   total_amount:     number
   status:           'draft' | 'submitted' | 'approved' | 'rejected' | 'ordered'
@@ -29,7 +29,7 @@ interface PurchaseRequest {
   vendors?: { name: string } | null
 }
 
-interface Vendor { id: string; name: string }
+interface Vendor { id: number; name: string }
 
 type PRStatus   = PurchaseRequest['status']
 type PRPriority = PurchaseRequest['priority']
@@ -134,7 +134,7 @@ export default function RequestsClient() {
       requested_by:   user.id,
       title: title.trim(),
       description: description.trim() || null,
-      vendor_id: vendorId || null,
+      vendor_id: vendorId ? Number(vendorId) : null,
       items, total_amount: total,
       status: 'draft', priority,
       needed_by: neededBy || null,

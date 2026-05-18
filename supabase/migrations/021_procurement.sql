@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
   requested_by     UUID          NOT NULL REFERENCES auth.users(id),
   title            TEXT          NOT NULL,
   description      TEXT,
-  vendor_id        UUID          REFERENCES vendors(id),
+  vendor_id        BIGINT        REFERENCES vendors(id),
   items            JSONB         NOT NULL DEFAULT '[]',
   total_amount     NUMERIC(12,2) NOT NULL DEFAULT 0,
   status           TEXT          NOT NULL DEFAULT 'draft'
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   company_id     UUID          NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
   po_number      TEXT          NOT NULL,
   request_id     UUID          REFERENCES purchase_requests(id),
-  vendor_id      UUID          NOT NULL REFERENCES vendors(id),
+  vendor_id      BIGINT        NOT NULL REFERENCES vendors(id),
   items          JSONB         NOT NULL DEFAULT '[]',
   subtotal       NUMERIC(12,2) NOT NULL DEFAULT 0,
   vat_amount     NUMERIC(12,2) NOT NULL DEFAULT 0,
