@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS goods_receipts (
   notes          TEXT,
   status         TEXT        NOT NULL DEFAULT 'draft'
     CHECK (status IN ('draft','confirmed')),
-  expense_id     UUID        REFERENCES expenses(id),
+  expense_id     BIGINT      REFERENCES expenses(id),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -142,7 +142,7 @@ RETURNS JSONB LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
   v_gr         RECORD;
   v_po         RECORD;
-  v_expense_id UUID;
+  v_expense_id BIGINT;
   v_uid        UUID := auth.uid();
   v_cid        UUID := get_my_company_id();
 BEGIN

@@ -28,7 +28,7 @@ interface GoodsReceipt {
   items:          GRItem[]
   notes:          string | null
   status:         'draft' | 'confirmed'
-  expense_id:     string | null
+  expense_id:     number | null
   created_at:     string
   purchase_orders?: {
     po_number:     string
