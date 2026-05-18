@@ -1,4 +1,5 @@
+import { Suspense } from 'react'
 import RequestsClient from './RequestsClient'
 export default function PurchaseRequestsPage() {
-  return <RequestsClient />
+  return <Suspense><RequestsClient /></Suspense>
 }
