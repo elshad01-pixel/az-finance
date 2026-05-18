@@ -32,23 +32,46 @@ interface CompanyContextValue {
   isFinance:    boolean
   user:         User | null
   loading:      boolean
+  setupError:   string | null
   refresh:      () => Promise<void>
 }
 
 const CompanyContext = createContext<CompanyContextValue>({
-  company:   null,
+  company:    null,
   membership: null,
-  role:      null,
-  isAdmin:   false,
-  isManager: false,
-  isFinance: false,
-  user:      null,
-  loading:   true,
-  refresh:   async () => {},
+  role:       null,
+  isAdmin:    false,
+  isManager:  false,
+  isFinance:  false,
+  user:       null,
+  loading:    true,
+  setupError: null,
+  refresh:    async () => {},
 })
 
 export function useCompany() {
   return useContext(CompanyContext)
+}
+
+function log(msg: string, data?: unknown) {
+  if (data !== undefined) {
+    console.log(`[CompanyContext] ${msg}`, data)
+  } else {
+    console.log(`[CompanyContext] ${msg}`)
+  }
+}
+
+function logError(msg: string, err?: unknown) {
+  console.error(`[CompanyContext] ${msg}`, err)
+}
+
+async function fetchMembership(userId: string) {
+  return supabase
+    .from('company_members')
+    .select('*, companies(*)')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .maybeSingle()
 }
 
 export function CompanyProvider({ children }: { children: React.ReactNode }) {
@@ -56,55 +79,126 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const [membership, setMembership] = useState<CompanyMember | null>(null)
   const [user,       setUser]       = useState<User | null>(null)
   const [loading,    setLoading]    = useState(true)
+  const [setupError, setSetupError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    setLoading(true)
+    setSetupError(null)
+
+    const { data: { user: authUser }, error: authErr } = await supabase.auth.getUser()
+    if (authErr) logError('getUser failed', authErr)
     setUser(authUser)
 
     if (!authUser) {
+      log('No authenticated user — clearing state')
       setCompany(null)
       setMembership(null)
       setLoading(false)
       return
     }
 
-    // Auto-accept any pending invitation for this email
-    const { data: pendingInv } = await supabase
-      .from('company_invitations')
-      .select('token')
-      .eq('invited_email', authUser.email?.toLowerCase() ?? '')
-      .eq('status', 'pending')
-      .gt('expires_at', new Date().toISOString())
-      .maybeSingle()
+    log(`Authenticated as ${authUser.email} (${authUser.id})`)
 
-    if (pendingInv?.token) {
-      await supabase.rpc('accept_invitation', { p_token: pendingInv.token })
+    // ── Step 1: Auto-accept any pending invitation for this email ──────────
+    try {
+      const { data: pendingInv, error: invErr } = await supabase
+        .from('company_invitations')
+        .select('token')
+        .eq('invited_email', (authUser.email ?? '').toLowerCase())
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString())
+        .maybeSingle()
+
+      if (invErr) {
+        log('Invitation lookup returned error (table may not exist yet)', invErr)
+      } else if (pendingInv?.token) {
+        log('Found pending invitation — auto-accepting', pendingInv.token)
+        const { error: acceptErr } = await supabase.rpc('accept_invitation', { p_token: pendingInv.token })
+        if (acceptErr) logError('accept_invitation failed', acceptErr)
+        else log('Invitation accepted successfully')
+      } else {
+        log('No pending invitation found')
+      }
+    } catch (e) {
+      log('Invitation check threw (table missing?)', e)
     }
 
-    // Load membership + company in one query
-    const { data: mem } = await supabase
-      .from('company_members')
-      .select('*, companies(*)')
-      .eq('user_id', authUser.id)
-      .eq('status', 'active')
-      .maybeSingle()
+    // ── Step 2: Load existing membership ──────────────────────────────────
+    const { data: mem, error: memErr } = await fetchMembership(authUser.id)
+    if (memErr) logError('membership fetch failed', memErr)
 
-    if (!mem) {
-      // New user with no company — create one automatically
-      await supabase.rpc('ensure_user_has_company')
-      const { data: mem2 } = await supabase
-        .from('company_members')
-        .select('*, companies(*)')
-        .eq('user_id', authUser.id)
-        .eq('status', 'active')
-        .maybeSingle()
-      if (mem2) {
-        setMembership(mem2 as CompanyMember)
-        setCompany((mem2 as unknown as { companies: Company }).companies)
-      }
-    } else {
+    if (mem) {
+      log('Existing membership found', { role: mem.role, company_id: mem.company_id })
       setMembership(mem as CompanyMember)
       setCompany((mem as unknown as { companies: Company }).companies)
+      setLoading(false)
+      return
+    }
+
+    log('No active membership — will create company for new user')
+
+    // ── Step 3a: Try direct insert (primary path, needs migration 016) ────
+    const companyName = (authUser.email ?? 'My Company').split('@')[0]
+    log(`Attempting direct company insert: name="${companyName}"`)
+
+    const { data: newCompany, error: compInsertErr } = await supabase
+      .from('companies')
+      .insert({ name: companyName, owner_id: authUser.id })
+      .select()
+      .single()
+
+    if (compInsertErr) {
+      logError('Direct company insert failed', compInsertErr)
+    } else {
+      log('Company created directly', newCompany)
+
+      const { error: memInsertErr } = await supabase
+        .from('company_members')
+        .insert({
+          company_id:    newCompany.id,
+          user_id:       authUser.id,
+          role:          'admin',
+          status:        'active',
+          invited_email: authUser.email ?? null,
+        })
+
+      if (memInsertErr) {
+        logError('Direct company_members insert failed', memInsertErr)
+      } else {
+        log('company_members row inserted directly')
+        const { data: mem3, error: mem3Err } = await fetchMembership(authUser.id)
+        if (mem3Err) logError('Re-fetch after direct insert failed', mem3Err)
+        if (mem3) {
+          setMembership(mem3 as CompanyMember)
+          setCompany((mem3 as unknown as { companies: Company }).companies)
+          setLoading(false)
+          return
+        }
+      }
+    }
+
+    // ── Step 3b: Fall back to SECURITY DEFINER RPC ────────────────────────
+    log('Falling back to ensure_user_has_company() RPC')
+    const { data: rpcResult, error: rpcErr } = await supabase.rpc('ensure_user_has_company')
+    if (rpcErr) {
+      logError('ensure_user_has_company RPC failed', rpcErr)
+    } else {
+      log('ensure_user_has_company returned', rpcResult)
+    }
+
+    const { data: mem4, error: mem4Err } = await fetchMembership(authUser.id)
+    if (mem4Err) logError('Re-fetch after RPC failed', mem4Err)
+
+    if (mem4) {
+      log('Membership found after RPC', { role: mem4.role })
+      setMembership(mem4 as CompanyMember)
+      setCompany((mem4 as unknown as { companies: Company }).companies)
+    } else {
+      const errMsg = rpcErr
+        ? `Company setup failed: ${rpcErr.message}`
+        : 'Company setup failed: no membership after all attempts. Check Supabase logs.'
+      logError(errMsg)
+      setSetupError(errMsg)
     }
 
     setLoading(false)
@@ -112,7 +206,8 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     load()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      log(`Auth state changed: ${_event}, session=${!!session}`)
       load()
     })
     return () => subscription.unsubscribe()
@@ -125,7 +220,8 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <CompanyContext.Provider value={{
-      company, membership, role, isAdmin, isManager, isFinance, user, loading, refresh: load,
+      company, membership, role, isAdmin, isManager, isFinance,
+      user, loading, setupError, refresh: load,
     }}>
       {children}
     </CompanyContext.Provider>
