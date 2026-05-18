@@ -10,18 +10,16 @@ interface Member {
   user_id:       string
   role:          Role
   invited_email: string | null
-  status:        'active' | 'pending'
+  status:        'active'
   created_at:    string
 }
 
-interface Invitation {
+interface PendingInvite {
   id:            number
   invited_email: string
   role:          Role
   token:         string
-  status:        'pending' | 'accepted' | 'expired'
   created_at:    string
-  expires_at:    string
 }
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -43,7 +41,7 @@ export default function TeamTab() {
   const { lang } = useLanguage()
 
   const [members,     setMembers]     = useState<Member[]>([])
-  const [invitations, setInvitations] = useState<Invitation[]>([])
+  const [invitations, setInvitations] = useState<PendingInvite[]>([])
   const [loading,     setLoading]     = useState(true)
 
   const [inviteEmail,   setInviteEmail]   = useState('')
@@ -55,12 +53,8 @@ export default function TeamTab() {
   const [removing,      setRemoving]      = useState<number | null>(null)
 
   async function loadTeam() {
-    if (!company) {
-      console.warn('[TeamTab] loadTeam: company is null, skipping fetch')
-      setLoading(false)
-      return
-    }
-    console.log('[TeamTab] loadTeam: fetching for company', company.id)
+    if (!company) { setLoading(false); return }
+
     const [{ data: mems, error: memErr }, { data: invs, error: invErr }] = await Promise.all([
       supabase
         .from('company_members')
@@ -69,16 +63,18 @@ export default function TeamTab() {
         .eq('status', 'active')
         .order('created_at'),
       supabase
-        .from('company_invitations')
-        .select('id, invited_email, role, token, status, created_at, expires_at')
+        .from('company_members')
+        .select('id, invited_email, role, token, created_at')
         .eq('company_id', company.id)
         .eq('status', 'pending')
         .order('created_at', { ascending: false }),
     ])
-    if (memErr) console.error('[TeamTab] members fetch error:', memErr)
-    if (invErr) console.error('[TeamTab] invitations fetch error:', invErr)
+
+    if (memErr) console.error('[TeamTab] members error:', memErr)
+    if (invErr) console.error('[TeamTab] invitations error:', invErr)
+
     setMembers(mems ?? [])
-    setInvitations(invs ?? [])
+    setInvitations((invs ?? []).filter(i => i.token) as PendingInvite[])
     setLoading(false)
   }
 
@@ -90,9 +86,7 @@ export default function TeamTab() {
     setInviteSuccess('')
 
     if (!company) {
-      const msg = 'Company context not loaded — try refreshing the page. (Migration 015 may not have been applied in Supabase.)'
-      console.error('[TeamTab] handleInvite: company is null.', msg)
-      setInviteError(msg)
+      setInviteError('Company not loaded — refresh the page.')
       return
     }
 
@@ -100,37 +94,31 @@ export default function TeamTab() {
     if (!email) return
 
     setInviting(true)
-    console.log('[TeamTab] inserting invitation:', { company_id: company.id, invited_email: email, role: inviteRole })
 
     try {
       const { data, error } = await supabase
-        .from('company_invitations')
+        .from('company_members')
         .insert({
           company_id:    company.id,
           invited_email: email,
           role:          inviteRole,
-          invited_by:    membership?.user_id,
+          status:        'pending',
+          // user_id intentionally omitted — NULL until they sign up
         })
-        .select('id, invited_email, role, token, status, created_at, expires_at')
+        .select('id, invited_email, role, token, created_at')
         .single()
 
-      console.log('[TeamTab] insert result — data:', data, '| error:', error)
-
       if (error) {
-        const detail = `${error.message}${error.details ? ' — ' + error.details : ''}${error.hint ? ' (hint: ' + error.hint + ')' : ''} [code: ${error.code}]`
-        setInviteError(`${lang === 'az' ? 'Dəvət yaradılmadı: ' : 'Failed to create invitation: '}${detail}`)
-      } else if (data) {
+        const detail = `${error.message}${error.hint ? ` (${error.hint})` : ''} [${error.code}]`
+        setInviteError(lang === 'az' ? `Dəvət yaradılmadı: ${detail}` : `Failed to create invitation: ${detail}`)
+      } else if (data?.token) {
         setInviteEmail('')
         setInviteSuccess(lang === 'az' ? `Dəvət yaradıldı — ${email}` : `Invitation created for ${email}`)
-        // Optimistically prepend new invitation so list is immediately visible
-        setInvitations(prev => [data as Invitation, ...prev])
-        // Also reload to get server-canonical data
-        await loadTeam()
+        setInvitations(prev => [data as PendingInvite, ...prev])
       } else {
-        setInviteError(lang === 'az' ? 'Cavab alınmadı. Yenidən cəhd edin.' : 'No data returned. Please try again.')
+        setInviteError(lang === 'az' ? 'Token yaradılmadı. Migration 018-i yoxlayın.' : 'Token not generated. Check migration 018.')
       }
     } catch (err) {
-      console.error('[TeamTab] unexpected error:', err)
       setInviteError(String(err))
     }
 
@@ -138,7 +126,7 @@ export default function TeamTab() {
   }
 
   async function removeMember(memberId: number, memberUserId: string) {
-    if (memberUserId === membership?.user_id) return // can't remove self
+    if (memberUserId === membership?.user_id) return
     const ok = window.confirm(lang === 'az'
       ? 'Bu istifadəçini komandadan çıxarmaq istəyirsiniz?'
       : 'Remove this member from the team?')
@@ -150,7 +138,7 @@ export default function TeamTab() {
   }
 
   async function cancelInvitation(invId: number) {
-    await supabase.from('company_invitations').update({ status: 'expired' }).eq('id', invId)
+    await supabase.from('company_members').delete().eq('id', invId)
     setInvitations(prev => prev.filter(i => i.id !== invId))
   }
 
@@ -158,7 +146,7 @@ export default function TeamTab() {
     const url = `${window.location.origin}/signup?invite=${token}`
     navigator.clipboard.writeText(url)
     setCopiedToken(token)
-    setTimeout(() => setCopiedToken(null), 2000)
+    setTimeout(() => setCopiedToken(null), 2500)
   }
 
   if (loading) {
@@ -182,11 +170,8 @@ export default function TeamTab() {
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-800">
         <p className="font-semibold mb-1">Company context not available</p>
         <p className="text-amber-700">
-          Migration 015 may not have been applied in Supabase. Run{' '}
-          <code className="font-mono bg-amber-100 px-1 rounded">supabase/migrations/015_multi_user.sql</code>{' '}
-          in the Supabase SQL Editor, then refresh this page.
+          Run migrations 015–018 in the Supabase SQL Editor, then refresh.
         </p>
-        <p className="mt-2 text-xs text-amber-600">Debug: company={String(company)}, membership={String(membership?.user_id)}</p>
       </div>
     )
   }
@@ -196,15 +181,13 @@ export default function TeamTab() {
 
       {/* ── Active members ────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-900">
-              {lang === 'az' ? 'Komanda Üzvləri' : 'Team Members'}
-            </h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              {members.length} {lang === 'az' ? 'aktiv üzv' : 'active members'}
-            </p>
-          </div>
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-900">
+            {lang === 'az' ? 'Komanda Üzvləri' : 'Team Members'}
+          </h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {members.length} {lang === 'az' ? 'aktiv üzv' : 'active members'}
+          </p>
         </div>
 
         <div className="divide-y divide-gray-50">
@@ -266,8 +249,8 @@ export default function TeamTab() {
           </h3>
           <p className="text-xs text-gray-400 mb-4">
             {lang === 'az'
-              ? 'Dəvət linki yaradılır — kopyalayıb istifadəçiyə göndərin.'
-              : 'Generates an invitation link — copy and share it with the user.'}
+              ? 'Dəvət linki yaradın, kopyalayıb WhatsApp/email ilə göndərin.'
+              : 'Generate a signup link, then share it via WhatsApp or email.'}
           </p>
 
           <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3">
@@ -336,8 +319,7 @@ export default function TeamTab() {
                       {ROLE_LABEL[inv.role]}
                     </span>
                     {' · '}
-                    {lang === 'az' ? 'Son tarix' : 'Expires'}{' '}
-                    {new Date(inv.expires_at).toLocaleDateString()}
+                    {lang === 'az' ? 'Qoşulmayıb' : 'Not yet joined'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -376,10 +358,10 @@ export default function TeamTab() {
             ['manager',  lang === 'az' ? 'Bütün maliyyə datası, sifariş təsdiqi' : 'All financial data, approve requests'],
             ['finance',  lang === 'az' ? 'Faktura, xərc, hesabat' : 'Invoices, expenses, reports'],
             ['employee', lang === 'az' ? 'Yalnız öz sorğuları' : 'Own purchase requests only'],
-          ] as [Role, string][]).map(([role, desc]) => (
-            <div key={role} className="flex items-center gap-2.5">
-              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ROLE_COLOR[role]} shrink-0`}>
-                {ROLE_LABEL[role]}
+          ] as [Role, string][]).map(([r, desc]) => (
+            <div key={r} className="flex items-center gap-2.5">
+              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ROLE_COLOR[r as Role]} shrink-0`}>
+                {ROLE_LABEL[r as Role]}
               </span>
               <span className="text-xs text-gray-500">{desc}</span>
             </div>

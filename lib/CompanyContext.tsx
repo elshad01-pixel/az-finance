@@ -104,17 +104,19 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     log(`Session active for ${authUser.email} (${authUser.id})`)
 
     // ── Step 1: Auto-accept any pending invitation for this email ──────────
+    // Invitations are stored as company_members rows with status='pending'.
+    // The members_read RLS policy allows reading pending rows by email even
+    // before the user has a company membership.
     try {
       const { data: pendingInv, error: invErr } = await supabase
-        .from('company_invitations')
+        .from('company_members')
         .select('token')
         .eq('invited_email', (authUser.email ?? '').toLowerCase())
         .eq('status', 'pending')
-        .gt('expires_at', new Date().toISOString())
         .maybeSingle()
 
       if (invErr) {
-        log('Invitation lookup error (table may not exist yet)', invErr)
+        log('Pending invite lookup error', invErr)
       } else if (pendingInv?.token) {
         log('Found pending invitation — auto-accepting', pendingInv.token)
         const { error: acceptErr } = await supabase.rpc('accept_invitation', { p_token: pendingInv.token })
@@ -124,7 +126,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
         log('No pending invitation found')
       }
     } catch (e) {
-      log('Invitation check threw (table missing?)', e)
+      log('Invitation check threw', e)
     }
 
     // ── Step 2: Load existing membership ──────────────────────────────────
