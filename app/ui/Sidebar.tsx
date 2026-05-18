@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/LanguageContext'
 import { useCompany, type Role } from '@/lib/CompanyContext'
+import { PACKAGE_COLORS, PACKAGE_LABELS } from '@/lib/features'
 import type { TranslationKey } from '@/lib/i18n'
 
 interface NavItem {
@@ -112,6 +113,17 @@ const navItems: NavItem[] = [
       </svg>
     ),
   },
+  {
+    labelKey: 'nav.billing',
+    href: '/billing',
+    minRole: 'admin',
+    icon: (
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+      </svg>
+    ),
+  },
 ]
 
 // Role hierarchy for visibility checks
@@ -132,7 +144,7 @@ const ROLE_BADGE: Record<Role, { label: string; cls: string }> = {
 export default function Sidebar() {
   const pathname = usePathname()
   const { t }   = useLanguage()
-  const { role, user, company, loading } = useCompany()
+  const { role, user, company, loading, currentPackage, isTrialActive, trialDaysLeft, subscription } = useCompany()
 
   const userRank = role ? ROLE_RANK[role] : 3 // default to admin rank while loading
 
@@ -150,10 +162,17 @@ export default function Sidebar() {
     <aside className="w-72 bg-blue-900 text-white flex flex-col shrink-0 h-full border-r border-blue-800">
 
       {/* ── Logo ─────────────────────────────────────────────────── */}
-      <div className="px-6 py-6 border-b border-blue-800">
-        <span className="text-xl font-bold tracking-tight">
-          Az<span className="text-blue-300">Finance</span>
-        </span>
+      <div className="px-6 py-5 border-b border-blue-800">
+        <div className="flex items-center justify-between">
+          <span className="text-xl font-bold tracking-tight">
+            Az<span className="text-blue-300">Finance</span>
+          </span>
+          {!loading && (
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${PACKAGE_COLORS[currentPackage].bg.replace('bg-', 'bg-').replace('100', '200/20')} ${PACKAGE_COLORS[currentPackage].text.replace('600', '300').replace('700', '300')} border-white/10`}>
+              {PACKAGE_LABELS[currentPackage]}
+            </span>
+          )}
+        </div>
         {company?.name ? (
           <p className="text-blue-400 text-xs mt-1 truncate">{company.name}</p>
         ) : (
@@ -181,6 +200,41 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* ── Trial / subscription banner ───────────────────────────── */}
+      {!loading && subscription && (
+        <div className="px-4 pb-2">
+          {isTrialActive ? (
+            <Link
+              href="/billing"
+              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors ${
+                trialDaysLeft <= 3
+                  ? 'bg-red-500/15 text-red-300 border border-red-500/25 hover:bg-red-500/25'
+                  : trialDaysLeft <= 7
+                  ? 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/25 hover:bg-yellow-500/25'
+                  : 'bg-blue-500/15 text-blue-300 border border-blue-500/25 hover:bg-blue-500/25'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="truncate">
+                {t('billing.trialDaysLeft').replace('{n}', String(trialDaysLeft))}
+              </span>
+            </Link>
+          ) : subscription.status === 'expired' || subscription.status === 'cancelled' ? (
+            <Link
+              href="/billing"
+              className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium bg-red-500/15 text-red-300 border border-red-500/25 hover:bg-red-500/25 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>{t('billing.trialExpired')}</span>
+            </Link>
+          ) : null}
+        </div>
+      )}
 
       {/* ── User / Role section ───────────────────────────────────── */}
       <div className="px-4 py-5 border-t border-blue-800">

@@ -16,6 +16,8 @@ const PATH_TITLE: Record<string, TranslationKey> = {
   '/reports':           'page.reports',
   '/tax-settings':      'page.taxSettings',
   '/company-settings':  'page.companySettings',
+  '/payroll':           'nav.payroll',
+  '/billing':           'page.billing',
 }
 
 export default function Header() {
