@@ -6,6 +6,7 @@ import TaxDeadlines from '@/app/ui/TaxDeadlines'
 import RecurringAlert from '@/app/ui/RecurringAlert'
 import VatThresholdMonitor from '@/app/ui/VatThresholdMonitor'
 import { useLanguage } from '@/lib/LanguageContext'
+import { useCompany } from '@/lib/CompanyContext'
 import { supabase } from '@/lib/supabase'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -448,6 +449,27 @@ export default function DashboardClient() {
     return { preset: 'this_month', customFrom: '', customTo: '' }
   })
   const [refreshKey, setRefreshKey] = useState(0)
+  const { canAccess } = useCompany()
+
+  // Procurement stats (Mid+ only)
+  const [procPending,  setProcPending]  = useState(0)
+  const [procOpen,     setProcOpen]     = useState(0)
+  const [procSpend,    setProcSpend]    = useState(0)
+
+  useEffect(() => {
+    if (!canAccess('purchase_requests')) return
+    const now  = new Date()
+    const mStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+    Promise.all([
+      supabase.from('purchase_requests').select('id', { count: 'exact' }).eq('status', 'submitted'),
+      supabase.from('purchase_orders').select('id', { count: 'exact' }).not('status', 'in', '(received,cancelled)'),
+      supabase.from('expenses').select('amount').eq('source', 'procurement').gte('date', mStart),
+    ]).then(([{ count: pc }, { count: oc }, { data: sd }]) => {
+      setProcPending(pc ?? 0)
+      setProcOpen(oc ?? 0)
+      setProcSpend((sd ?? []).reduce((s: number, r: { amount: number }) => s + Number(r.amount), 0))
+    })
+  }, [canAccess])
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(filter)) } catch {}
@@ -970,6 +992,36 @@ export default function DashboardClient() {
           ))}
         </div>
       </div>
+
+      {/* Procurement widget (Mid+ only) */}
+      {canAccess('purchase_requests') && (
+        <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-700">{t('proc.section')}</h3>
+            <div className="flex gap-2">
+              <Link href="/procurement/requests" className="text-xs text-blue-600 hover:underline">{t('nav.procRequests')}</Link>
+              <span className="text-gray-300">·</span>
+              <Link href="/procurement/orders"   className="text-xs text-blue-600 hover:underline">{t('nav.procOrders')}</Link>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <Link href="/procurement/requests?status=submitted"
+              className="bg-blue-50 rounded-xl p-4 hover:bg-blue-100 transition-colors">
+              <p className="text-xs text-gray-500 mb-1">{t('proc.pendingApprovals')}</p>
+              <p className="text-2xl font-bold text-blue-600">{procPending}</p>
+            </Link>
+            <Link href="/procurement/orders"
+              className="bg-orange-50 rounded-xl p-4 hover:bg-orange-100 transition-colors">
+              <p className="text-xs text-gray-500 mb-1">{t('proc.openOrders')}</p>
+              <p className="text-2xl font-bold text-orange-600">{procOpen}</p>
+            </Link>
+            <div className="bg-purple-50 rounded-xl p-4">
+              <p className="text-xs text-gray-500 mb-1">{t('proc.monthlySpend')}</p>
+              <p className="text-xl font-bold text-purple-600">₼ {procSpend.toFixed(0)}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <RecurringAlert />
       <TaxDeadlines />

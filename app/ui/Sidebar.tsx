@@ -1,10 +1,12 @@
 'use client'
 
+import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useLanguage } from '@/lib/LanguageContext'
 import { useCompany, type Role } from '@/lib/CompanyContext'
 import { PACKAGE_COLORS, PACKAGE_LABELS } from '@/lib/features'
+import UpgradePrompt from '@/app/ui/UpgradePrompt'
 import type { TranslationKey } from '@/lib/i18n'
 
 interface NavItem {
@@ -141,10 +143,45 @@ const ROLE_BADGE: Record<Role, { label: string; cls: string }> = {
   employee: { label: 'Employee', cls: 'bg-gray-500/20 text-gray-300 border border-gray-500/30' },
 }
 
+const PROC_ITEMS = [
+  {
+    labelKey: 'nav.procRequests' as TranslationKey,
+    href:     '/procurement/requests',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+      </svg>
+    ),
+  },
+  {
+    labelKey: 'nav.procOrders' as TranslationKey,
+    href:     '/procurement/orders',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+      </svg>
+    ),
+  },
+  {
+    labelKey: 'nav.procReceipts' as TranslationKey,
+    href:     '/procurement/receipts',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+]
+
 export default function Sidebar() {
   const pathname = usePathname()
   const { t }   = useLanguage()
-  const { role, user, company, loading, currentPackage, isTrialActive, trialDaysLeft, subscription } = useCompany()
+  const { role, user, company, loading, currentPackage, isTrialActive, trialDaysLeft, subscription, canAccess } = useCompany()
+  const [showUpgrade, setShowUpgrade] = React.useState(false)
+  const hasProcurement = canAccess('purchase_requests')
 
   const userRank = role ? ROLE_RANK[role] : 3 // default to admin rank while loading
 
@@ -159,6 +196,7 @@ export default function Sidebar() {
   const badge       = role ? ROLE_BADGE[role] : null
 
   return (
+    <>
     <aside className="w-72 bg-blue-900 text-white flex flex-col shrink-0 h-full border-r border-blue-800">
 
       {/* ── Logo ─────────────────────────────────────────────────── */}
@@ -200,6 +238,54 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* ── Procurement section ──────────────────────────────────── */}
+      <div className="px-4 pb-4">
+        <button
+          onClick={() => !hasProcurement && setShowUpgrade(true)}
+          className="w-full text-left"
+        >
+          <div className="flex items-center justify-between px-2 mb-1.5">
+            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">
+              {t('proc.section')}
+            </span>
+            {!hasProcurement && (
+              <span className="text-xs bg-blue-800 text-blue-300 px-1.5 py-0.5 rounded-full">Mid+</span>
+            )}
+          </div>
+        </button>
+        <div className="space-y-0.5">
+          {PROC_ITEMS.map(item => {
+            const isActive = pathname.startsWith(item.href)
+            if (!hasProcurement) {
+              return (
+                <button
+                  key={item.href}
+                  onClick={() => setShowUpgrade(true)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-blue-300/50 hover:text-blue-300/70 hover:bg-blue-800/30 transition-all"
+                >
+                  {item.icon}
+                  {t(item.labelKey)}
+                </button>
+              )
+            }
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  isActive
+                    ? 'bg-blue-700 text-white shadow-md shadow-blue-900/40'
+                    : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
+                }`}
+              >
+                {item.icon}
+                {t(item.labelKey)}
+              </Link>
+            )
+          })}
+        </div>
+      </div>
 
       {/* ── Trial / subscription banner ───────────────────────────── */}
       {!loading && subscription && (
@@ -255,5 +341,7 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
+    {showUpgrade && <UpgradePrompt feature="purchase_requests" onClose={() => setShowUpgrade(false)} />}
+    </>
   )
 }

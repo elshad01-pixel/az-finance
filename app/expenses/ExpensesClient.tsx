@@ -34,6 +34,7 @@ interface Expense {
   payment_status?:      PaymentStatus
   payment_date?:        string | null
   is_payroll_generated: boolean
+  source?:              'manual' | 'procurement' | 'payroll'
 }
 
 interface Vendor {
@@ -417,6 +418,12 @@ export default function ExpensesClient() {
 
   async function deleteExpense(id: number) {
     const exp = expenses.find(e => e.id === id)
+    if (exp?.source === 'procurement') {
+      alert(lang === 'az'
+        ? 'Bu xərc satınalma modulundan avtomatik yaradılıb və silinə bilməz.'
+        : 'This expense was auto-created by Procurement and cannot be deleted.')
+      return
+    }
     if (exp?.is_payroll_generated) {
       alert(lang === 'az'
         ? 'Bu xərc əmək haqqı modulundan avtomatik yaradılıb və silinə bilməz.'
@@ -631,6 +638,11 @@ export default function ExpensesClient() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium text-gray-900">{exp.description}</p>
+                        {exp.source === 'procurement' && (
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">
+                            {t('proc.sourceBadge')}
+                          </span>
+                        )}
                         {exp.is_payroll_generated && (
                           <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 whitespace-nowrap">
                             Əmək haqqı
