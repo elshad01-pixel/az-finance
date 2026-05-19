@@ -504,6 +504,8 @@ const en = {
   'proc.selectPO':           'Select PO…',
   'proc.notes':              'Notes',
   'proc.addItem':            'Add item',
+  'proc.unitPriceOptional':  'Est. Price (optional)',
+  'proc.unitPriceHint':      'Not required — for budget approval only',
   'proc.vatEnabled':         'Include VAT (18%)',
   // empty states
   'proc.noRequests':         'No purchase requests yet.',
@@ -1028,6 +1030,8 @@ const az: Record<keyof typeof en, string> = {
   'proc.selectPO':           'Sifariş seçin…',
   'proc.notes':              'Qeydlər',
   'proc.addItem':            'Mal əlavə et',
+  'proc.unitPriceOptional':  'Təxmini Qiymət (ixtiyari)',
+  'proc.unitPriceHint':      'Məcburi deyil - yalnız büdcə təsdiqi üçün',
   'proc.vatEnabled':         'ƏDV daxil et (18%)',
   // empty states
   'proc.noRequests':         'Hələ satınalma sorğusu yoxdur.',
