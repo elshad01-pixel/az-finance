@@ -542,6 +542,8 @@ const en = {
   'proc.editReceipt':        'Edit Receipt',
   'proc.duplicateGR':        'A confirmed receipt already exists for this purchase order',
   'proc.deleteReceiptConfirm': 'Delete this receipt?',
+  'proc.orderCreated':         'Purchase order created',
+  'proc.requestCreated':       'Purchase request created',
 } as const
 
 const az: Record<keyof typeof en, string> = {
@@ -1086,6 +1088,8 @@ const az: Record<keyof typeof en, string> = {
   'proc.editReceipt':        'Qəbulu Düzənlə',
   'proc.duplicateGR':        'Bu satınalma sifarişi üçün artıq mal qəbulu mövcuddur',
   'proc.deleteReceiptConfirm': 'Bu qəbulu silmək istəyirsiniz?',
+  'proc.orderCreated':         'Satınalma sifarişi yaradıldı',
+  'proc.requestCreated':       'Satınalma sorğusu yaradıldı',
 } as const
 
 export const translations = { en, az } as const
