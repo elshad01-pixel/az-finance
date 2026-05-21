@@ -186,6 +186,29 @@ const WH_ITEMS = [
   },
 ]
 
+const SALES_ITEMS = [
+  {
+    labelKey: 'nav.salesOrders' as TranslationKey,
+    href:     '/sales/orders',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+      </svg>
+    ),
+  },
+  {
+    labelKey: 'nav.salesDeliveries' as TranslationKey,
+    href:     '/sales/deliveries',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+      </svg>
+    ),
+  },
+]
+
 const PROC_ITEMS = [
   {
     labelKey: 'nav.procRequests' as TranslationKey,
@@ -227,6 +250,7 @@ export default function Sidebar() {
   const [upgradeFeature, setUpgradeFeature] = React.useState<string>('purchase_requests')
   const hasProcurement = canAccess('purchase_requests')
   const hasInventory   = canAccess('inventory_basic')
+  const hasSales       = canAccess('sales_orders')
 
   const userRank = role ? ROLE_RANK[role] : 3 // default to admin rank while loading
 
@@ -306,6 +330,47 @@ export default function Sidebar() {
               return (
                 <button key={item.href}
                   onClick={() => { setUpgradeFeature('inventory_basic'); setShowUpgrade(true) }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-blue-300/50 hover:text-blue-300/70 hover:bg-blue-800/30 transition-all">
+                  {item.icon}
+                  {t(item.labelKey)}
+                </button>
+              )
+            }
+            return (
+              <Link key={item.href} href={item.href}
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  isActive ? 'bg-blue-700 text-white shadow-md shadow-blue-900/40' : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
+                }`}>
+                {item.icon}
+                {t(item.labelKey)}
+              </Link>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── Sales section ───────────────────────────────────────── */}
+      <div className="px-4 pb-4">
+        <button
+          onClick={() => { if (!hasSales) { setUpgradeFeature('sales_orders'); setShowUpgrade(true) } }}
+          className="w-full text-left"
+        >
+          <div className="flex items-center justify-between px-2 mb-1.5">
+            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">
+              {t('so.section')}
+            </span>
+            {!hasSales && (
+              <span className="text-xs bg-blue-800 text-blue-300 px-1.5 py-0.5 rounded-full">Mid+</span>
+            )}
+          </div>
+        </button>
+        <div className="space-y-0.5">
+          {SALES_ITEMS.map(item => {
+            const isActive = pathname.startsWith(item.href)
+            if (!hasSales) {
+              return (
+                <button key={item.href}
+                  onClick={() => { setUpgradeFeature('sales_orders'); setShowUpgrade(true) }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-blue-300/50 hover:text-blue-300/70 hover:bg-blue-800/30 transition-all">
                   {item.icon}
                   {t(item.labelKey)}

@@ -8,7 +8,7 @@ const LIGHT: readonly string[] = [
 
 const MID: readonly string[] = [
   ...LIGHT,
-  'purchase_requests', 'purchase_orders', 'goods_receipt', 'inventory_basic',
+  'purchase_requests', 'purchase_orders', 'goods_receipt', 'inventory_basic', 'sales_orders',
 ]
 
 const ENTERPRISE: readonly string[] = [
