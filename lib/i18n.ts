@@ -565,6 +565,65 @@ const en = {
   'proc.deleteReceiptConfirm': 'Delete this receipt?',
   'proc.orderCreated':         'Purchase order created',
   'proc.requestCreated':       'Purchase request created',
+
+  // ── Warehouse ─────────────────────────────────────────────────────────────
+  'nav.warehouse':             'Warehouse',
+  'nav.whProducts':            'Products',
+  'nav.whMovements':           'Stock Movements',
+  'nav.whSettings':            'Warehouse Settings',
+  'page.whProducts':           'Products',
+  'page.whMovements':          'Stock Movements',
+  'page.whSettings':           'Warehouse Settings',
+  'wh.section':                'Warehouse',
+  'wh.upgradeHint':            'Upgrade to Mid to access Inventory',
+  // product fields
+  'wh.sku':                    'SKU',
+  'wh.productName':            'Product Name',
+  'wh.category':               'Category',
+  'wh.unit':                   'Unit',
+  'wh.costPrice':              'Cost Price',
+  'wh.salePrice':              'Sale Price',
+  'wh.stockQty':               'Stock Qty',
+  'wh.minStockLevel':          'Min Stock',
+  'wh.description':            'Description',
+  // actions
+  'wh.addProduct':             'Add Product',
+  'wh.editProduct':            'Edit Product',
+  'wh.stockAdjustment':        'Stock Adjustment',
+  'wh.adjustmentReason':       'Reason / Notes',
+  'wh.newQty':                 'New Quantity',
+  'wh.currentQty':             'Current Quantity',
+  'wh.adjustSaved':            'Stock updated',
+  // status
+  'wh.active':                 'Active',
+  'wh.inactive':               'Inactive',
+  'wh.allStatuses':            'All Statuses',
+  'wh.lowStockOnly':           'Low Stock',
+  // movement types
+  'wh.movIn':                  'IN',
+  'wh.movOut':                 'OUT',
+  'wh.movAdj':                 'Adjustment',
+  'wh.movTransfer':            'Transfer',
+  // empty states
+  'wh.noProducts':             'No products yet. Click Add Product to create one.',
+  'wh.noMovements':            'No stock movements yet.',
+  'wh.noWarehouses':           'No warehouses configured.',
+  // warehouse settings
+  'wh.addWarehouse':           'Add Warehouse',
+  'wh.editWarehouse':          'Edit Warehouse',
+  'wh.warehouseName':          'Warehouse Name',
+  'wh.location':               'Location',
+  'wh.setDefault':             'Set as Default',
+  'wh.default':                'Default',
+  'wh.warehouseSaved':         'Warehouse saved',
+  // dashboard
+  'wh.lowStockAlert':          '{n} products below minimum stock level',
+  'wh.viewLowStock':           'View low stock →',
+  // filters
+  'wh.allCategories':          'All Categories',
+  'wh.reference':              'Reference',
+  'wh.productSaved':           'Product saved',
+  'wh.productDeleted':         'Product deleted',
 } as const
 
 const az: Record<keyof typeof en, string> = {
@@ -1132,6 +1191,65 @@ const az: Record<keyof typeof en, string> = {
   'proc.deleteReceiptConfirm': 'Bu qəbulu silmək istəyirsiniz?',
   'proc.orderCreated':         'Satınalma sifarişi yaradıldı',
   'proc.requestCreated':       'Satınalma sorğusu yaradıldı',
+
+  // ── Warehouse ─────────────────────────────────────────────────────────────
+  'nav.warehouse':             'Anbar',
+  'nav.whProducts':            'Məhsullar',
+  'nav.whMovements':           'Stok Hərəkətləri',
+  'nav.whSettings':            'Anbar Ayarları',
+  'page.whProducts':           'Məhsullar',
+  'page.whMovements':          'Stok Hərəkətləri',
+  'page.whSettings':           'Anbar Ayarları',
+  'wh.section':                'Anbar',
+  'wh.upgradeHint':            'Anbar modulu üçün Mid planına keçin',
+  // product fields
+  'wh.sku':                    'Artikul',
+  'wh.productName':            'Məhsul Adı',
+  'wh.category':               'Kateqoriya',
+  'wh.unit':                   'Ölçü Vahidi',
+  'wh.costPrice':              'Alış Qiyməti',
+  'wh.salePrice':              'Satış Qiyməti',
+  'wh.stockQty':               'Stok Miqdarı',
+  'wh.minStockLevel':          'Min Stok',
+  'wh.description':            'Açıqlama',
+  // actions
+  'wh.addProduct':             'Məhsul Əlavə Et',
+  'wh.editProduct':            'Məhsulu Redaktə Et',
+  'wh.stockAdjustment':        'Stok Düzəlişi',
+  'wh.adjustmentReason':       'Səbəb / Qeyd',
+  'wh.newQty':                 'Yeni Miqdar',
+  'wh.currentQty':             'Cari Miqdar',
+  'wh.adjustSaved':            'Stok yeniləndi',
+  // status
+  'wh.active':                 'Aktiv',
+  'wh.inactive':               'Qeyri-aktiv',
+  'wh.allStatuses':            'Bütün Statuslar',
+  'wh.lowStockOnly':           'Aşağı Stok',
+  // movement types
+  'wh.movIn':                  'GİRİŞ',
+  'wh.movOut':                 'ÇIXIŞ',
+  'wh.movAdj':                 'Düzəliş',
+  'wh.movTransfer':            'Transfer',
+  // empty states
+  'wh.noProducts':             'Hələ məhsul yoxdur. Məhsul Əlavə Et düyməsinə basın.',
+  'wh.noMovements':            'Hələ stok hərəkəti yoxdur.',
+  'wh.noWarehouses':           'Anbar konfiqurasiya edilməyib.',
+  // warehouse settings
+  'wh.addWarehouse':           'Anbar Əlavə Et',
+  'wh.editWarehouse':          'Anbarı Redaktə Et',
+  'wh.warehouseName':          'Anbar Adı',
+  'wh.location':               'Ünvan',
+  'wh.setDefault':             'Əsas kimi təyin et',
+  'wh.default':                'Əsas',
+  'wh.warehouseSaved':         'Anbar saxlanıldı',
+  // dashboard
+  'wh.lowStockAlert':          '{n} məhsul minimum stok həddinin altındadır',
+  'wh.viewLowStock':           'Aşağı stoklara bax →',
+  // filters
+  'wh.allCategories':          'Bütün Kateqoriyalar',
+  'wh.reference':              'İstinad',
+  'wh.productSaved':           'Məhsul saxlanıldı',
+  'wh.productDeleted':         'Məhsul silindi',
 } as const
 
 export const translations = { en, az } as const

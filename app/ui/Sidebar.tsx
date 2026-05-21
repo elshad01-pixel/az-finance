@@ -143,6 +143,39 @@ const ROLE_BADGE: Record<Role, { label: string; cls: string }> = {
   employee: { label: 'Employee', cls: 'bg-gray-500/20 text-gray-300 border border-gray-500/30' },
 }
 
+const WH_ITEMS = [
+  {
+    labelKey: 'nav.whProducts' as TranslationKey,
+    href:     '/warehouse/products',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+      </svg>
+    ),
+  },
+  {
+    labelKey: 'nav.whMovements' as TranslationKey,
+    href:     '/warehouse/movements',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+      </svg>
+    ),
+  },
+  {
+    labelKey: 'nav.whSettings' as TranslationKey,
+    href:     '/warehouse/settings',
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+      </svg>
+    ),
+  },
+]
+
 const PROC_ITEMS = [
   {
     labelKey: 'nav.procRequests' as TranslationKey,
@@ -180,8 +213,10 @@ export default function Sidebar() {
   const pathname = usePathname()
   const { t }   = useLanguage()
   const { role, user, company, loading, currentPackage, isTrialActive, trialDaysLeft, subscription, canAccess } = useCompany()
-  const [showUpgrade, setShowUpgrade] = React.useState(false)
+  const [showUpgrade,    setShowUpgrade]    = React.useState(false)
+  const [upgradeFeature, setUpgradeFeature] = React.useState<string>('purchase_requests')
   const hasProcurement = canAccess('purchase_requests')
+  const hasInventory   = canAccess('inventory_basic')
 
   const userRank = role ? ROLE_RANK[role] : 3 // default to admin rank while loading
 
@@ -238,6 +273,47 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* ── Warehouse section ────────────────────────────────────── */}
+      <div className="px-4 pb-4">
+        <button
+          onClick={() => { if (!hasInventory) { setUpgradeFeature('inventory_basic'); setShowUpgrade(true) } }}
+          className="w-full text-left"
+        >
+          <div className="flex items-center justify-between px-2 mb-1.5">
+            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">
+              {t('wh.section')}
+            </span>
+            {!hasInventory && (
+              <span className="text-xs bg-blue-800 text-blue-300 px-1.5 py-0.5 rounded-full">Mid+</span>
+            )}
+          </div>
+        </button>
+        <div className="space-y-0.5">
+          {WH_ITEMS.map(item => {
+            const isActive = pathname.startsWith(item.href)
+            if (!hasInventory) {
+              return (
+                <button key={item.href}
+                  onClick={() => { setUpgradeFeature('inventory_basic'); setShowUpgrade(true) }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-blue-300/50 hover:text-blue-300/70 hover:bg-blue-800/30 transition-all">
+                  {item.icon}
+                  {t(item.labelKey)}
+                </button>
+              )
+            }
+            return (
+              <Link key={item.href} href={item.href}
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  isActive ? 'bg-blue-700 text-white shadow-md shadow-blue-900/40' : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
+                }`}>
+                {item.icon}
+                {t(item.labelKey)}
+              </Link>
+            )
+          })}
+        </div>
+      </div>
 
       {/* ── Procurement section ──────────────────────────────────── */}
       <div className="px-4 pb-4">
@@ -341,7 +417,7 @@ export default function Sidebar() {
         </div>
       </div>
     </aside>
-    {showUpgrade && <UpgradePrompt feature="purchase_requests" onClose={() => setShowUpgrade(false)} />}
+    {showUpgrade && <UpgradePrompt feature={upgradeFeature} onClose={() => setShowUpgrade(false)} />}
     </>
   )
 }

@@ -456,6 +456,9 @@ export default function DashboardClient() {
   const [procOpen,     setProcOpen]     = useState(0)
   const [procSpend,    setProcSpend]    = useState(0)
 
+  // Inventory low stock (Mid+ only)
+  const [lowStockCount, setLowStockCount] = useState(0)
+
   useEffect(() => {
     if (!canAccess('purchase_requests')) return
     const now  = new Date()
@@ -469,6 +472,18 @@ export default function DashboardClient() {
       setProcOpen(oc ?? 0)
       setProcSpend((sd ?? []).reduce((s: number, r: { amount: number }) => s + Number(r.amount), 0))
     })
+  }, [canAccess])
+
+  useEffect(() => {
+    if (!canAccess('inventory_basic')) return
+    supabase.from('products')
+      .select('id, stock_qty, min_stock_level')
+      .eq('status', 'active')
+      .gt('min_stock_level', 0)
+      .then(({ data }) => {
+        const low = (data ?? []).filter((p: { stock_qty: number; min_stock_level: number }) => p.stock_qty < p.min_stock_level)
+        setLowStockCount(low.length)
+      })
   }, [canAccess])
 
   useEffect(() => {
@@ -1020,6 +1035,27 @@ export default function DashboardClient() {
               <p className="text-xl font-bold text-purple-600">₼ {procSpend.toFixed(0)}</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Low Stock Alert (Mid+ only) */}
+      {canAccess('inventory_basic') && lowStockCount > 0 && (
+        <div className="mt-6">
+          <Link href="/warehouse/products?filter=low"
+            className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-5 py-4 hover:bg-red-100 transition-colors">
+            <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-700">
+                {t('wh.lowStockAlert').replace('{n}', String(lowStockCount))}
+              </p>
+            </div>
+            <span className="text-xs font-medium text-red-600">{t('wh.viewLowStock')}</span>
+          </Link>
         </div>
       )}
 
