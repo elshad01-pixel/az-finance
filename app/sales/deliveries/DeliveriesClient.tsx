@@ -83,7 +83,7 @@ export default function DeliveriesClient() {
         .order('created_at', { ascending: false }),
     ])
     setDeliveries((delRes.data as Delivery[]) ?? [])
-    setConfirmedSOs((soRes.data as ConfirmedSO[]) ?? [])
+    setConfirmedSOs((soRes.data as unknown as ConfirmedSO[]) ?? [])
     setLoading(false)
   }, [])
 
