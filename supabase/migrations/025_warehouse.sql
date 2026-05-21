@@ -207,7 +207,7 @@ BEGIN
         v_cid, v_prod_id, v_wh_id, 'in',
         v_qty, v_cost, v_qty * v_cost,
         'purchase_order', v_gr.po_id,
-        'GR: ' || v_gr.gr_number,
+        'GR: ' || v_gr.receipt_number,
         v_uid
       );
 

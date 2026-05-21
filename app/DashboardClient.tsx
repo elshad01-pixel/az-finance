@@ -474,16 +474,35 @@ export default function DashboardClient() {
     })
   }, [canAccess])
 
+  const [expiringCount,   setExpiringCount]   = useState(0)
+  const [expiredCount,    setExpiredCount]     = useState(0)
+  const [expiringBatches, setExpiringBatches] = useState<Array<{ id: string; batch_number: string; expiry_date: string; products: { name: string } | null }>>([])
+
   useEffect(() => {
     if (!canAccess('inventory_basic')) return
-    supabase.from('products')
-      .select('id, stock_qty, min_stock_level')
-      .eq('status', 'active')
-      .gt('min_stock_level', 0)
-      .then(({ data }) => {
-        const low = (data ?? []).filter((p: { stock_qty: number; min_stock_level: number }) => p.stock_qty < p.min_stock_level)
-        setLowStockCount(low.length)
-      })
+    const today = new Date().toISOString().slice(0, 10)
+    const in30  = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
+
+    Promise.all([
+      supabase.from('products')
+        .select('id, stock_qty, min_stock_level')
+        .eq('status', 'active')
+        .gt('min_stock_level', 0),
+      supabase.from('product_batches')
+        .select('id, batch_number, expiry_date, products(name)')
+        .eq('status', 'active')
+        .not('expiry_date', 'is', null)
+        .lte('expiry_date', in30)
+        .order('expiry_date'),
+    ]).then(([{ data: prodData }, { data: batchData }]) => {
+      const low = (prodData ?? []).filter((p: { stock_qty: number; min_stock_level: number }) => p.stock_qty < p.min_stock_level)
+      setLowStockCount(low.length)
+      const batches = (batchData ?? []) as unknown as Array<{ id: string; batch_number: string; expiry_date: string; products: { name: string } | null }>
+      setExpiredCount(batches.filter(b => b.expiry_date < today).length)
+      const upcoming = batches.filter(b => b.expiry_date >= today)
+      setExpiringCount(upcoming.length)
+      setExpiringBatches(upcoming.slice(0, 5))
+    })
   }, [canAccess])
 
   useEffect(() => {
@@ -1056,6 +1075,51 @@ export default function DashboardClient() {
             </div>
             <span className="text-xs font-medium text-red-600">{t('wh.viewLowStock')}</span>
           </Link>
+        </div>
+      )}
+
+      {/* Expiry Alerts (Mid+ only) */}
+      {canAccess('inventory_basic') && (expiredCount > 0 || expiringCount > 0) && (
+        <div className="mt-4 bg-white rounded-xl shadow-sm border border-orange-200 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />
+              Son İstifadə Tarixi Xəbərdarlığı
+            </h3>
+            <Link href="/warehouse/batches" className="text-xs text-blue-500 hover:underline">{t('wh.viewBatches')}</Link>
+          </div>
+          {expiredCount > 0 && (
+            <div className="mb-2 flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-xs font-medium text-red-700">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              {t('wh.expiryAlertExpired').replace('{n}', String(expiredCount))}
+            </div>
+          )}
+          {expiringBatches.length > 0 && (
+            <>
+              <p className="text-xs text-gray-500 mb-2">{t('wh.expiryAlert').replace('{n}', String(expiringCount))}</p>
+              <div className="space-y-1">
+                {expiringBatches.map(b => {
+                  const days = Math.floor((new Date(b.expiry_date).getTime() - new Date().setHours(0,0,0,0)) / 86_400_000)
+                  return (
+                    <div key={b.id} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                      <div>
+                        <p className="text-sm text-gray-700">{b.products?.name ?? '—'}</p>
+                        <p className="text-xs font-mono text-gray-400">{b.batch_number}</p>
+                      </div>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        days <= 7 ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {new Date(b.expiry_date + 'T12:00:00').toLocaleDateString('az-AZ', { day: '2-digit', month: 'short' })}
+                        {' '}({days}g)
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
         </div>
       )}
 

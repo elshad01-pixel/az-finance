@@ -565,6 +565,9 @@ const en = {
   'proc.deleteReceiptConfirm': 'Delete this receipt?',
   'proc.orderCreated':         'Purchase order created',
   'proc.requestCreated':       'Purchase request created',
+  'proc.stockProduct':         'Stock product',
+  'proc.selectProduct':        'Select product…',
+  'proc.nonStockItem':         'Service / non-stock',
 
   // ── Warehouse ─────────────────────────────────────────────────────────────
   'nav.warehouse':             'Warehouse',
@@ -624,6 +627,21 @@ const en = {
   'wh.reference':              'Reference',
   'wh.productSaved':           'Product saved',
   'wh.productDeleted':         'Product deleted',
+
+  'nav.whBatches':             'Partiyalar',
+  'page.whBatches':            'Partiya İzləmə',
+  'wh.batchNumber':            'Partiya Nömrəsi',
+  'wh.expiryDate':             'Son İstifadə Tarixi',
+  'wh.expiryDateOptional':     'Son İstifadə Tarixi (ixtiyari)',
+  'wh.qtyReceived':            'Qəbul Edilən Miqdar',
+  'wh.qtyRemaining':           'Qalan Miqdar',
+  'wh.statusExpired':          'Vaxtı Keçmiş',
+  'wh.statusConsumed':         'İstifadə Edilmiş',
+  'wh.statusActive':           'Aktiv',
+  'wh.noBatches':              'Partiya tapılmadı.',
+  'wh.expiryAlert':            '{n} məhsulun partiyanın son istifadə tarixi 30 gün ərzindədir',
+  'wh.expiryAlertExpired':     '{n} partiyanın vaxtı keçmişdir',
+  'wh.viewBatches':            'Partiyanı gör →',
 } as const
 
 const az: Record<keyof typeof en, string> = {
@@ -1191,6 +1209,9 @@ const az: Record<keyof typeof en, string> = {
   'proc.deleteReceiptConfirm': 'Bu qəbulu silmək istəyirsiniz?',
   'proc.orderCreated':         'Satınalma sifarişi yaradıldı',
   'proc.requestCreated':       'Satınalma sorğusu yaradıldı',
+  'proc.stockProduct':         'Stok məhsulu',
+  'proc.selectProduct':        'Məhsul seçin…',
+  'proc.nonStockItem':         'Xidmət / stoksuz',
 
   // ── Warehouse ─────────────────────────────────────────────────────────────
   'nav.warehouse':             'Anbar',
@@ -1250,6 +1271,21 @@ const az: Record<keyof typeof en, string> = {
   'wh.reference':              'İstinad',
   'wh.productSaved':           'Məhsul saxlanıldı',
   'wh.productDeleted':         'Məhsul silindi',
+
+  'nav.whBatches':             'Partiyalar',
+  'page.whBatches':            'Partiya İzləmə',
+  'wh.batchNumber':            'Partiya Nömrəsi',
+  'wh.expiryDate':             'Son İstifadə Tarixi',
+  'wh.expiryDateOptional':     'Son İstifadə Tarixi (ixtiyari)',
+  'wh.qtyReceived':            'Qəbul Edilən Miqdar',
+  'wh.qtyRemaining':           'Qalan Miqdar',
+  'wh.statusExpired':          'Vaxtı Keçmiş',
+  'wh.statusConsumed':         'İstifadə Edilmiş',
+  'wh.statusActive':           'Aktiv',
+  'wh.noBatches':              'Partiya tapılmadı.',
+  'wh.expiryAlert':            '{n} məhsulun partiyanın son istifadə tarixi 30 gün ərzindədir',
+  'wh.expiryAlertExpired':     '{n} partiyanın vaxtı keçmişdir',
+  'wh.viewBatches':            'Partiyanı gör →',
 } as const
 
 export const translations = { en, az } as const

@@ -9,7 +9,16 @@ import UpgradePrompt from '@/app/ui/UpgradePrompt'
 import { generatePOPDF } from '@/lib/generatePOPDF'
 import type { TranslationKey } from '@/lib/i18n'
 
-interface LineItem { description: string; quantity: number; unit_price: number; unit: string }
+interface LineItem {
+  description:   string
+  quantity:      number
+  unit_price:    number
+  unit:          string
+  product_id?:   string | null
+  is_stock_item?: boolean
+}
+
+interface Product { id: string; sku: string; name: string; unit: string; cost_price: number }
 
 interface PurchaseOrder {
   id:            string
@@ -52,7 +61,7 @@ const STATUS_KEY: Record<POStatus, TranslationKey> = {
   cancelled:          'proc.poCancelled',
 }
 
-const EMPTY_ITEM = (): LineItem => ({ description: '', quantity: 1, unit_price: 0, unit: 'ədəd' })
+const EMPTY_ITEM = (): LineItem => ({ description: '', quantity: 1, unit_price: 0, unit: 'ədəd', product_id: null, is_stock_item: false })
 const VAT_RATE = 0.18
 
 export default function OrdersClient() {
@@ -64,6 +73,7 @@ export default function OrdersClient() {
   const [orders,       setOrders]       = useState<PurchaseOrder[]>([])
   const [vendors,      setVendors]      = useState<Vendor[]>([])
   const [approvedPRs,  setApprovedPRs]  = useState<ApprovedPR[]>([])
+  const [products,     setProducts]     = useState<Product[]>([])
   const [loading,      setLoading]      = useState(true)
   const [showForm,     setShowForm]     = useState(false)
   const [showUpgrade,  setShowUpgrade]  = useState(false)
@@ -87,7 +97,7 @@ export default function OrdersClient() {
   const load = useCallback(async () => {
     if (!company) return
     setLoading(true)
-    const [{ data: oData }, { data: vData }, { data: prData }] = await Promise.all([
+    const [{ data: oData }, { data: vData }, { data: prData }, { data: pData }] = await Promise.all([
       supabase.from('purchase_orders')
         .select('*, vendors(name, voen), purchase_requests(request_number, title)')
         .order('created_at', { ascending: false }),
@@ -96,10 +106,12 @@ export default function OrdersClient() {
         .select('id, request_number, title, vendor_id, items, total_amount')
         .eq('status', 'approved')
         .order('created_at', { ascending: false }),
+      supabase.from('products').select('id, sku, name, unit, cost_price').eq('status', 'active').order('name'),
     ])
     setOrders((oData ?? []) as PurchaseOrder[])
     setVendors((vData ?? []) as Vendor[])
     setApprovedPRs((prData ?? []) as ApprovedPR[])
+    setProducts((pData ?? []) as Product[])
     setLoading(false)
   }, [company])
 
@@ -115,7 +127,9 @@ export default function OrdersClient() {
         autoOpenedRef.current = prId
         setSelectedPR(prId)
         setVendorId(pr.vendor_id?.toString() ?? '')
-        setItems(pr.items.length > 0 ? pr.items : [EMPTY_ITEM()])
+        setItems(pr.items.length > 0
+          ? pr.items.map(it => ({ ...it, product_id: it.product_id ?? null, is_stock_item: it.is_stock_item ?? false }))
+          : [EMPTY_ITEM()])
         setShowForm(true)
       }
     }
@@ -133,12 +147,37 @@ export default function OrdersClient() {
     const pr = approvedPRs.find(p => p.id === prId)
     if (pr) {
       setVendorId(pr.vendor_id?.toString() ?? '')
-      setItems(pr.items.length > 0 ? pr.items : [EMPTY_ITEM()])
+      setItems(pr.items.length > 0
+        ? pr.items.map(it => ({ ...it, product_id: it.product_id ?? null, is_stock_item: it.is_stock_item ?? false }))
+        : [EMPTY_ITEM()])
     }
   }
 
   function updateItem(idx: number, field: keyof LineItem, val: string | number) {
     setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it))
+  }
+
+  function selectProduct(idx: number, productId: string) {
+    const product = products.find(p => p.id === productId)
+    if (!product) {
+      setItems(prev => prev.map((it, i) => i === idx ? { ...it, product_id: null, description: '', unit: 'ədəd', unit_price: 0 } : it))
+      return
+    }
+    setItems(prev => prev.map((it, i) => i === idx ? {
+      ...it,
+      product_id:  product.id,
+      description: product.name,
+      unit:        product.unit,
+      unit_price:  product.cost_price,
+    } : it))
+  }
+
+  function toggleStockItem(idx: number, val: boolean) {
+    setItems(prev => prev.map((it, i) => i === idx ? {
+      ...it,
+      is_stock_item: val,
+      product_id:    val ? it.product_id : null,
+    } : it))
   }
 
   async function handleCreate() {
@@ -387,18 +426,49 @@ export default function OrdersClient() {
                   </button>
                 </div>
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="grid grid-cols-[2fr_1fr_1fr_100px_32px] bg-gray-50 text-xs font-semibold text-gray-500 px-3 py-2 gap-2">
-                    <span>{t('common.description')}</span><span>{t('common.quantity')}</span>
-                    <span>{t('proc.unit')}</span><span className="text-right">{t('common.unitPrice')}</span><span />
+                  <div className="grid grid-cols-[28px_2fr_72px_72px_96px_32px] bg-gray-50 text-xs font-semibold text-gray-500 px-3 py-2 gap-2">
+                    <span title={t('proc.stockProduct')}>
+                      <svg className="w-3.5 h-3.5 text-blue-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                    </span>
+                    <span>{t('common.description')}</span>
+                    <span className="text-center">{t('common.quantity')}</span>
+                    <span>{t('proc.unit')}</span>
+                    <span className="text-right">{t('common.unitPrice')}</span>
+                    <span />
                   </div>
                   {items.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-[2fr_1fr_1fr_100px_32px] px-3 py-2 gap-2 border-t border-gray-100 items-center">
-                      <input value={it.description} onChange={e => updateItem(idx, 'description', e.target.value)}
-                        className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full" />
+                    <div key={idx} className="grid grid-cols-[28px_2fr_72px_72px_96px_32px] px-3 py-2 gap-2 border-t border-gray-100 items-center">
+                      {/* Stock toggle */}
+                      <div className="flex justify-center">
+                        <input type="checkbox" checked={!!it.is_stock_item}
+                          onChange={e => toggleStockItem(idx, e.target.checked)}
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 cursor-pointer"
+                          title={t('proc.stockProduct')} />
+                      </div>
+                      {/* Description or product selector */}
+                      {it.is_stock_item ? (
+                        <select value={it.product_id ?? ''}
+                          onChange={e => selectProduct(idx, e.target.value)}
+                          className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full bg-transparent">
+                          <option value="">{t('proc.selectProduct')}</option>
+                          {products.map(p => (
+                            <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input value={it.description} onChange={e => updateItem(idx, 'description', e.target.value)}
+                          className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full" />
+                      )}
                       <input type="number" min="0" value={it.quantity} onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
                         className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full text-center" />
-                      <input value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} placeholder="ədəd"
-                        className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full" />
+                      {it.is_stock_item ? (
+                        <span className="text-sm text-gray-500 py-1 truncate">{it.unit || '—'}</span>
+                      ) : (
+                        <input value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} placeholder="ədəd"
+                          className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full" />
+                      )}
                       <input type="number" min="0" step="0.01" value={it.unit_price} onChange={e => updateItem(idx, 'unit_price', Number(e.target.value))}
                         className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full text-right" />
                       <button onClick={() => setItems(p => p.filter((_, i) => i !== idx))} disabled={items.length === 1}

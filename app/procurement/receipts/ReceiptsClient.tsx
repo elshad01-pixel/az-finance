@@ -7,8 +7,8 @@ import { useLanguage } from '@/lib/LanguageContext'
 import { useCompany } from '@/lib/CompanyContext'
 import UpgradePrompt from '@/app/ui/UpgradePrompt'
 
-interface POItem { description: string; quantity: number; unit_price: number; unit: string }
-interface GRItem { description: string; ordered_qty: number; received_qty: number; unit_price: number; unit: string }
+interface POItem { description: string; quantity: number; unit_price: number; unit: string; product_id?: string | null; is_stock_item?: boolean }
+interface GRItem { description: string; ordered_qty: number; received_qty: number; unit_price: number; unit: string; product_id?: string | null; is_stock_item?: boolean; expiry_date?: string | null }
 
 interface ConfirmedPO {
   id:           string
@@ -109,11 +109,14 @@ export default function ReceiptsClient() {
     const po = confirmedPOs.find(p => p.id === poId)
     if (po) {
       setGRItems(po.items.map(it => ({
-        description:  it.description,
-        ordered_qty:  it.quantity,
-        received_qty: it.quantity,
-        unit_price:   it.unit_price,
-        unit:         it.unit,
+        description:   it.description,
+        ordered_qty:   it.quantity,
+        received_qty:  it.quantity,
+        unit_price:    it.unit_price,
+        unit:          it.unit,
+        product_id:    it.product_id ?? null,
+        is_stock_item: it.is_stock_item ?? false,
+        expiry_date:   null,
       })))
     } else {
       setGRItems([])
@@ -399,12 +402,29 @@ export default function ReceiptsClient() {
                       <span className="text-center">{t('proc.receivedQty')}</span>
                     </div>
                     {grItems.map((it, idx) => (
-                      <div key={idx} className="grid grid-cols-[2fr_80px_80px] px-3 py-2 gap-2 border-t border-gray-100 items-center text-sm">
-                        <span className="text-gray-700">{it.description}</span>
-                        <span className="text-center text-gray-500">{it.ordered_qty} {it.unit}</span>
-                        <input type="number" min="0" max={it.ordered_qty} value={it.received_qty}
-                          onChange={e => setGRItems(p => p.map((g, i) => i === idx ? { ...g, received_qty: Number(e.target.value) } : g))}
-                          className="text-center border border-gray-200 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full" />
+                      <div key={idx} className="border-t border-gray-100">
+                        <div className="grid grid-cols-[2fr_80px_80px] px-3 py-2 gap-2 items-center text-sm">
+                          <span className="text-gray-700 flex items-center gap-1.5">
+                            {it.description}
+                            {it.is_stock_item && (
+                              <span className="shrink-0 text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                                {t('proc.stockProduct')}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-center text-gray-500">{it.ordered_qty} {it.unit}</span>
+                          <input type="number" min="0" max={it.ordered_qty} value={it.received_qty}
+                            onChange={e => setGRItems(p => p.map((g, i) => i === idx ? { ...g, received_qty: Number(e.target.value) } : g))}
+                            className="text-center border border-gray-200 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full" />
+                        </div>
+                        {it.is_stock_item && (
+                          <div className="px-3 pb-2 flex items-center gap-2">
+                            <label className="text-xs text-gray-500 whitespace-nowrap">{t('wh.expiryDateOptional')}:</label>
+                            <input type="date" value={it.expiry_date ?? ''}
+                              onChange={e => setGRItems(p => p.map((g, i) => i === idx ? { ...g, expiry_date: e.target.value || null } : g))}
+                              className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:ring-2 focus:ring-blue-500 outline-none" />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
