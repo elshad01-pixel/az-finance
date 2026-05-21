@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
@@ -34,7 +35,7 @@ interface Expense {
   payment_status?:      PaymentStatus
   payment_date?:        string | null
   is_payroll_generated: boolean
-  source?:              'manual' | 'procurement' | 'payroll'
+  source?:              'manual' | 'procurement' | 'payroll' | 'recurring' | 'petty_cash' | 'bank_charge'
 }
 
 interface Vendor {
@@ -94,6 +95,7 @@ function getDateRange(filter: DateFilter): { start: string; end: string } | null
 
 export default function ExpensesClient() {
   const { t, lang } = useLanguage()
+  const router = useRouter()
 
   // ── Data ──────────────────────────────────────────────────────────────────
   const [expenses,  setExpenses]  = useState<Expense[]>([])
@@ -110,6 +112,13 @@ export default function ExpensesClient() {
   const [search,         setSearch]         = useState('')
   const [templateSaved,  setTemplateSaved]  = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
+
+  // ── Source selector ───────────────────────────────────────────────────────
+  const [showSourceSelector, setShowSourceSelector] = useState(false)
+  const [formSource,         setFormSource]         = useState<'manual' | 'recurring' | 'petty_cash' | 'bank_charge'>('manual')
+  const [bankName,           setBankName]           = useState('')
+  const [bankChargeType,     setBankChargeType]     = useState('')
+  const [pettyCashError,     setPettyCashError]     = useState<string | null>(null)
 
   // ── Vendor combobox state ─────────────────────────────────────────────────
   const [vendorId,           setVendorId]           = useState<number | null>(null)
@@ -273,14 +282,34 @@ export default function ExpensesClient() {
     setVendorId(null); setVendorSearch(''); setShowVendorDropdown(false); setShowQuickAdd(false)
     setPaymentStatus('paid'); setPaymentDate(todayIso())
     setEditingExpense(null)
+    setFormSource('manual'); setBankName(''); setBankChargeType(''); setPettyCashError(null)
   }
 
-  function closeModal() { setShowModal(false); resetForm(); setSaveError(null) }
+  function closeModal() {
+    setShowModal(false); setShowSourceSelector(false); resetForm(); setSaveError(null)
+  }
 
   function openAdd() {
     resetForm()
+    setShowSourceSelector(true)
+  }
+
+  function openFormWithSource(source: 'recurring' | 'petty_cash' | 'bank_charge') {
+    setFormSource(source)
     setDate(todayIso())
-    setSubcategory(CATEGORY_MAP['Office'][0])
+    if (source === 'recurring') {
+      setIsRecurring(true)
+      setSubcategory(CATEGORY_MAP['Office'][0])
+    } else if (source === 'petty_cash') {
+      setCategory('Other')
+      setSubcategory('Miscellaneous')
+      setPaymentMethod('cash')
+    } else if (source === 'bank_charge') {
+      setCategory('Bank & Finance')
+      setSubcategory('Bank Fees')
+      setPaymentMethod('bank')
+    }
+    setShowSourceSelector(false)
     setShowModal(true)
   }
 
@@ -301,6 +330,8 @@ export default function ExpensesClient() {
     setVendorSearch('')
     setPaymentStatus(exp.payment_status ?? 'paid')
     setPaymentDate(exp.payment_date ?? '')
+    const src = exp.source
+    setFormSource(src === 'petty_cash' || src === 'bank_charge' || src === 'recurring' ? src : 'manual')
     setShowModal(true)
   }
 
@@ -348,6 +379,14 @@ export default function ExpensesClient() {
     e.preventDefault()
     setSaving(true)
     setSaveError(null)
+    setPettyCashError(null)
+
+    if (formSource === 'petty_cash' && parseFloat(amount) > 200) {
+      setPettyCashError(lang === 'az' ? 'Kiçik kassa maksimum ₼200 ola bilər' : 'Petty cash maximum is ₼200')
+      setSaving(false)
+      return
+    }
+
     const netAmount   = parseFloat(amount)
     const computedVat = vatOnExpense ? Math.round(netAmount * 0.18 * 100) / 100 : null
     const nextDue     = isRecurring && date ? calcNextDue(date, frequency) : null
@@ -377,6 +416,17 @@ export default function ExpensesClient() {
     if (paymentStatus !== 'paid' || editingExpense) payload.payment_status = paymentStatus
     if (paymentStatus === 'paid' && paymentDate) payload.payment_date = paymentDate
     else if (editingExpense) payload.payment_date = null
+
+    // Source and source-specific fields
+    if (!editingExpense) {
+      if (formSource === 'petty_cash')   payload.source = 'petty_cash'
+      else if (formSource === 'bank_charge') payload.source = 'bank_charge'
+      else if (formSource === 'recurring')   payload.source = 'recurring'
+    }
+    if (formSource === 'bank_charge') {
+      if (bankName.trim()) payload.supplier = bankName.trim()
+      if (bankChargeType)  payload.notes    = bankChargeType + (notes.trim() ? ' — ' + notes.trim() : '')
+    }
 
     if (editingExpense) {
       const { data, error } = await supabase.from('expenses').update(payload).eq('id', editingExpense.id).select().single()
@@ -640,12 +690,27 @@ export default function ExpensesClient() {
                         <p className="text-sm font-medium text-gray-900">{exp.description}</p>
                         {exp.source === 'procurement' && (
                           <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">
-                            {t('proc.sourceBadge')}
+                            📦 {t('proc.sourceBadge')}
                           </span>
                         )}
                         {exp.is_payroll_generated && (
                           <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 whitespace-nowrap">
-                            Əmək haqqı
+                            👥 {lang === 'az' ? 'Əmək haqqı' : 'Payroll'}
+                          </span>
+                        )}
+                        {exp.source === 'bank_charge' && (
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 whitespace-nowrap">
+                            🏦 {t('exp.badgeBankCharge')}
+                          </span>
+                        )}
+                        {exp.source === 'petty_cash' && (
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 whitespace-nowrap">
+                            💵 {t('exp.badgePettyCash')}
+                          </span>
+                        )}
+                        {exp.is_recurring && exp.source !== 'procurement' && !exp.is_payroll_generated && (
+                          <span className="inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 whitespace-nowrap">
+                            🔄 {t('exp.badgeRecurring')}
                           </span>
                         )}
                       </div>
@@ -758,6 +823,67 @@ export default function ExpensesClient() {
         )}
       </div>
 
+      {/* ── Source Selector Modal ── */}
+      {showSourceSelector && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4"
+          onClick={e => { if (e.target === e.currentTarget) { setShowSourceSelector(false); resetForm() } }}
+        >
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <h3 className="text-lg font-semibold text-gray-900">{t('exp.chooseSource')}</h3>
+              <button onClick={() => { setShowSourceSelector(false); resetForm() }}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-5 grid grid-cols-2 gap-3">
+              <button
+                onClick={() => { setShowSourceSelector(false); router.push('/procurement/requests') }}
+                className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-gray-100 hover:border-orange-300 hover:bg-orange-50 transition-all text-left"
+              >
+                <span className="text-2xl">📦</span>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">{t('exp.sourceProcurement')}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t('exp.sourceProcurementDesc')}</p>
+                </div>
+              </button>
+              <button
+                onClick={() => openFormWithSource('recurring')}
+                className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-gray-100 hover:border-blue-300 hover:bg-blue-50 transition-all text-left"
+              >
+                <span className="text-2xl">🔄</span>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">{t('exp.sourceRecurring')}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t('exp.sourceRecurringDesc')}</p>
+                </div>
+              </button>
+              <button
+                onClick={() => openFormWithSource('petty_cash')}
+                className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-gray-100 hover:border-amber-300 hover:bg-amber-50 transition-all text-left"
+              >
+                <span className="text-2xl">💵</span>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">{t('exp.sourcePettyCash')}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t('exp.sourcePettyCashDesc')}</p>
+                </div>
+              </button>
+              <button
+                onClick={() => openFormWithSource('bank_charge')}
+                className="flex flex-col items-start gap-2 p-4 rounded-xl border-2 border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition-all text-left"
+              >
+                <span className="text-2xl">🏦</span>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">{t('exp.sourceBankCharge')}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t('exp.sourceBankChargeDesc')}</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Modal ── */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-10 px-4"
@@ -768,7 +894,11 @@ export default function ExpensesClient() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
-                  {editingExpense ? t('exp.editExpense') : t('exp.addExpense')}
+                  {editingExpense ? t('exp.editExpense')
+                    : formSource === 'recurring'    ? t('exp.sourceRecurring')
+                    : formSource === 'petty_cash'   ? t('exp.sourcePettyCash')
+                    : formSource === 'bank_charge'  ? t('exp.sourceBankCharge')
+                    : t('exp.addExpense')}
                 </h3>
                 <p className="text-xs text-gray-400 mt-0.5">{t('exp.fillDetails')}</p>
               </div>
@@ -799,8 +929,37 @@ export default function ExpensesClient() {
                   />
                 </div>
 
+                {/* ── Bank charge fields ── */}
+                {formSource === 'bank_charge' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.bankName')}</label>
+                      <input type="text" value={bankName} onChange={e => setBankName(e.target.value)}
+                        placeholder={lang === 'az' ? 'məs. ABB, Kapital Bank' : 'e.g. ABB, Kapital Bank'}
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.chargeType')}</label>
+                      <div className="relative">
+                        <select value={bankChargeType} onChange={e => setBankChargeType(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-8">
+                          <option value="">{t('exp.chargeType')}…</option>
+                          <option value={t('exp.chargeTypeFee')}>{t('exp.chargeTypeFee')}</option>
+                          <option value={t('exp.chargeTypeInterest')}>{t('exp.chargeTypeInterest')}</option>
+                          <option value={t('exp.chargeTypeTransfer')}>{t('exp.chargeTypeTransfer')}</option>
+                          <option value={t('exp.chargeTypeOther')}>{t('exp.chargeTypeOther')}</option>
+                        </select>
+                        <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 {/* ── Vendor combobox ── */}
-                <div>
+                {formSource !== 'bank_charge' && formSource !== 'petty_cash' && <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.supplier')}</label>
                   <div ref={vendorRef} className="relative">
                     {/* Trigger button */}
@@ -927,35 +1086,37 @@ export default function ExpensesClient() {
                       />
                     )}
                   </div>
-                </div>
+                </div>}
 
-                {/* Category + Subcategory */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.category')}</label>
-                    <div className="relative">
-                      <select value={category} onChange={e => handleCategoryChange(e.target.value as MainCategory)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-8">
-                        {MAIN_CATEGORIES.map(cat => <option key={cat} value={cat}>{tCat(cat)}</option>)}
-                      </select>
-                      <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                {/* Category + Subcategory — hidden for bank_charge / petty_cash */}
+                {formSource !== 'bank_charge' && formSource !== 'petty_cash' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.category')}</label>
+                      <div className="relative">
+                        <select value={category} onChange={e => handleCategoryChange(e.target.value as MainCategory)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-8">
+                          {MAIN_CATEGORIES.map(cat => <option key={cat} value={cat}>{tCat(cat)}</option>)}
+                        </select>
+                        <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.subcategory')}</label>
+                      <div className="relative">
+                        <select value={subcategory} onChange={e => setSubcategory(e.target.value)}
+                          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-8">
+                          {subcats.map(s => <option key={s} value={s}>{tSub(s)}</option>)}
+                        </select>
+                        <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('exp.subcategory')}</label>
-                    <div className="relative">
-                      <select value={subcategory} onChange={e => setSubcategory(e.target.value)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-8">
-                        {subcats.map(s => <option key={s} value={s}>{tSub(s)}</option>)}
-                      </select>
-                      <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
+                )}
 
                 {/* Payment Method */}
                 <div>
@@ -981,72 +1142,82 @@ export default function ExpensesClient() {
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-medium select-none">₼</span>
                     <input type="number" required min="0.01" step="0.01" value={amount}
-                      onChange={e => setAmount(e.target.value)} placeholder="0.00"
+                      onChange={e => { setAmount(e.target.value); setPettyCashError(null) }} placeholder="0.00"
                       className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                     />
                   </div>
-                </div>
-
-                {/* VAT toggle */}
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">{t('exp.vatOnExpense')}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">ƏDV 18%</p>
-                    </div>
-                    <button type="button" onClick={() => setVatOnExpense(v => !v)}
-                      className={`relative w-11 h-6 rounded-full transition-colors ${vatOnExpense ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${vatOnExpense ? 'translate-x-5' : ''}`} />
-                    </button>
-                  </div>
-                  {vatOnExpense && vatNetAmount > 0 && (
-                    <div className="mt-3 text-xs text-gray-600 space-y-1 border-t border-gray-200 pt-3">
-                      <div className="flex justify-between">
-                        <span>{t('exp.netAmount')}</span>
-                        <span className="font-semibold tabular-nums">{fmt(vatNetAmount)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>{t('exp.vatAmount')}</span>
-                        <span className="font-semibold tabular-nums">{fmt(vatComputed)}</span>
-                      </div>
-                      <div className="flex justify-between font-semibold text-gray-900 border-t border-gray-200 pt-1 mt-1">
-                        <span>{t('common.total')}</span>
-                        <span className="tabular-nums">{fmt(vatNetAmount + vatComputed)}</span>
-                      </div>
-                    </div>
+                  {formSource === 'petty_cash' && (
+                    <p className="text-xs text-amber-600 font-medium mt-1">{t('exp.pettyCashLimit')}</p>
+                  )}
+                  {pettyCashError && (
+                    <p className="text-xs text-red-600 font-medium mt-1">{pettyCashError}</p>
                   )}
                 </div>
 
-                {/* Recurring toggle */}
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">{t('exp.recurring')}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{t('exp.frequency')}</p>
+                {/* VAT toggle — hidden for bank_charge / petty_cash */}
+                {formSource !== 'bank_charge' && formSource !== 'petty_cash' && (
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">{t('exp.vatOnExpense')}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">ƏDV 18%</p>
+                      </div>
+                      <button type="button" onClick={() => setVatOnExpense(v => !v)}
+                        className={`relative w-11 h-6 rounded-full transition-colors ${vatOnExpense ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${vatOnExpense ? 'translate-x-5' : ''}`} />
+                      </button>
                     </div>
-                    <button type="button" onClick={() => setIsRecurring(r => !r)}
-                      className={`relative w-11 h-6 rounded-full transition-colors ${isRecurring ? 'bg-blue-600' : 'bg-gray-200'}`}>
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isRecurring ? 'translate-x-5' : ''}`} />
-                    </button>
+                    {vatOnExpense && vatNetAmount > 0 && (
+                      <div className="mt-3 text-xs text-gray-600 space-y-1 border-t border-gray-200 pt-3">
+                        <div className="flex justify-between">
+                          <span>{t('exp.netAmount')}</span>
+                          <span className="font-semibold tabular-nums">{fmt(vatNetAmount)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>{t('exp.vatAmount')}</span>
+                          <span className="font-semibold tabular-nums">{fmt(vatComputed)}</span>
+                        </div>
+                        <div className="flex justify-between font-semibold text-gray-900 border-t border-gray-200 pt-1 mt-1">
+                          <span>{t('common.total')}</span>
+                          <span className="tabular-nums">{fmt(vatNetAmount + vatComputed)}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {isRecurring && (
-                    <div className="flex gap-2 pt-1">
-                      {(['monthly', 'quarterly', 'annual'] as Frequency[]).map(f => (
-                        <button key={f} type="button" onClick={() => setFrequency(f)}
-                          className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${
-                            frequency === f ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'
-                          }`}>
-                          {t(FREQUENCY_I18N[f] as TranslationKey)}
-                        </button>
-                      ))}
+                )}
+
+                {/* Recurring toggle — hidden for bank_charge / petty_cash */}
+                {formSource !== 'bank_charge' && formSource !== 'petty_cash' && (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">{t('exp.recurring')}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{t('exp.frequency')}</p>
+                      </div>
+                      <button type="button" onClick={() => setIsRecurring(r => !r)}
+                        className={`relative w-11 h-6 rounded-full transition-colors ${isRecurring ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${isRecurring ? 'translate-x-5' : ''}`} />
+                      </button>
                     </div>
-                  )}
-                  {isRecurring && date && (
-                    <p className="text-xs text-blue-600 font-medium">
-                      {t('exp.nextDue')}: {formatDate(calcNextDue(date, frequency))}
-                    </p>
-                  )}
-                </div>
+                    {isRecurring && (
+                      <div className="flex gap-2 pt-1">
+                        {(['monthly', 'quarterly', 'annual'] as Frequency[]).map(f => (
+                          <button key={f} type="button" onClick={() => setFrequency(f)}
+                            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                              frequency === f ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300'
+                            }`}>
+                            {t(FREQUENCY_I18N[f] as TranslationKey)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {isRecurring && date && (
+                      <p className="text-xs text-blue-600 font-medium">
+                        {t('exp.nextDue')}: {formatDate(calcNextDue(date, frequency))}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {/* Payment Status */}
                 <div>
