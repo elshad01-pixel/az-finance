@@ -62,23 +62,31 @@ const ICON:  Record<Status, string>       = { PASS: '✅', WARN: '⚠️', FAIL:
 
 function r2(n: number) { return Math.round(n * 100) / 100 }
 
-function refPayroll(gross: number) {
-  // PIT: 14% on ≤8,000 AZN; 25% on excess
-  const pit         = gross <= 8_000
-    ? r2(gross * 0.14)
-    : r2(8_000 * 0.14 + (gross - 8_000) * 0.25)
+function refPayroll(gross: number, isMainWorkplace = false) {
+  // Art.102: 200 AZN monthly deduction for main workplace employees (gross ≤ 2,500)
+  const pitDeduction = isMainWorkplace && gross <= 2500 ? 200 : 0
+  const taxable      = Math.max(0, gross - pitDeduction)
 
-  const empSocial   = r2(gross * 0.03)    // Employee SI  3%
-  const emplrSocial = r2(gross * 0.22)    // Employer SI 22%
-  const empHealth   = r2(gross * 0.005)   // Employee HI  0.5%
-  const emplrHealth = r2(gross * 0.005)   // Employer HI  0.5%
-  const empUnemp    = r2(gross * 0.005)   // Unemployment 0.5% (employee)
+  // PIT: 14% on taxable ≤8,000 AZN; 25% on excess
+  const pit = taxable <= 8_000
+    ? r2(taxable * 0.14)
+    : r2(8_000 * 0.14 + (taxable - 8_000) * 0.25)
+
+  const empSocial   = r2(gross * 0.03)   // SI 3%
+  const emplrSocial = r2(gross * 0.22)   // SI 22%
+
+  // HI 2026: 2% on gross ≤ 2,500 + 0.5% on gross > 2,500 (employee AND employer)
+  const empHealth   = r2(Math.min(gross, 2500) * 0.02 + Math.max(0, gross - 2500) * 0.005)
+  const emplrHealth = empHealth
+
+  const empUnemp   = r2(gross * 0.005)   // UI 0.5% employee
+  const emplrUnemp = r2(gross * 0.005)   // UI 0.5% employer (private non-oil)
 
   const totalDed  = r2(pit + empSocial + empHealth + empUnemp)
   const net       = r2(gross - totalDed)
-  const totalCost = r2(gross + emplrSocial + emplrHealth)
+  const totalCost = r2(gross + emplrSocial + emplrHealth + emplrUnemp)
 
-  return { gross, pit, empSocial, emplrSocial, empHealth, emplrHealth, empUnemp, totalDed, net, totalCost }
+  return { gross, pitDeduction, taxable, pit, empSocial, emplrSocial, empHealth, emplrHealth, empUnemp, emplrUnemp, totalDed, net, totalCost }
 }
 
 // ── Simplified tax reference ──────────────────────────────────────────────────
@@ -136,14 +144,16 @@ Social Insurance (Sosial Sığorta):
   Employer: 22%  |  Employee: 3%  (no ceiling applied in base calculation)
   Example (9,000 AZN): Employer 1,980 AZN | Employee 270 AZN
 
-Health Insurance (Tibbi Sığorta): 0.5% employer + 0.5% employee
+Health Insurance (Tibbi Sığorta) — Private Non-Oil 2026:
+  Rate: 2% on gross up to 2,500 AZN + 0.5% on portion above 2,500 AZN (employee AND employer)
+  Example (3,000 AZN): (2,500×2%) + (500×0.5%) = 50 + 2.5 = 52.5 AZN each
+  Example (9,000 AZN): (2,500×2%) + (6,500×0.5%) = 50 + 32.5 = 82.5 AZN each
+
+Unemployment (İşsizlik): 0.5% employee AND employer (private non-oil sector)
   Example (9,000 AZN): 45 AZN each
 
-Unemployment (İşsizlik): 0.5% employee only
-  Example (9,000 AZN): 45 AZN
-
-Net Pay (9,000 AZN gross):
-  9,000 − PIT(1,370) − SI(270) − HI(45) − UI(45) = 7,270 AZN
+Net Pay (9,000 AZN gross, not main workplace):
+  9,000 − PIT(1,370) − SI(270) − HI(82.5) − UI(45) = 7,232.5 AZN
 
 ERP Workflows:
   Procure-to-Pay:  PR → PO → GR (Goods Receipt) → Expense (accrual) → Payment
@@ -191,8 +201,8 @@ PHASE 5 — Payroll (Əmək haqqı)
   □ employees / payroll_runs / payroll_entries tables exist
   □ PIT calculated correctly per Azerbaijan law
   □ Social insurance (employer + employee) correct
-  □ Health insurance 0.5% each
-  □ Unemployment 0.5% employee
+  □ Health insurance: 2% on gross ≤ 2,500 + 0.5% above 2,500 (employee AND employer)
+  □ Unemployment 0.5% employee AND employer (private non-oil)
   □ Net salary = gross − (PIT + empSI + empHI + UI)
 
 PHASE 6 — Reports (Hesabatlar)
@@ -273,11 +283,12 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'verify_payroll',
-    description: 'Compute reference payroll deductions per Azerbaijan law for comparison with app output.',
+    description: 'Compute reference payroll deductions per Azerbaijan 2026 law for comparison with app output.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        gross: { type: 'number', description: 'Gross salary in AZN' },
+        gross:             { type: 'number',  description: 'Gross salary in AZN' },
+        is_main_workplace: { type: 'boolean', description: 'Apply 200 AZN Art.102 PIT deduction (main workplace employees with gross ≤ 2,500)' },
       },
       required: ['gross'],
     },
@@ -369,13 +380,17 @@ async function exec(name: string, raw: Record<string, any>): Promise<unknown> {
     }
 
     case 'verify_payroll': {
-      const result = refPayroll(Number(raw.gross))
-      const checks = raw.gross === 9000 ? {
-        pit_expected:  '1,370 AZN (8,000×14% + 1,000×25%)',
-        pit_actual:    `${result.pit} AZN`,
-        net_expected:  '7,270 AZN',
-        net_actual:    `${result.net} AZN`,
-        match:         result.pit === 1370 && result.net === 7270,
+      const isMain = Boolean(raw.is_main_workplace ?? false)
+      const result = refPayroll(Number(raw.gross), isMain)
+      const isRef9k = raw.gross === 9000 && !isMain
+      const checks = isRef9k ? {
+        pit_expected:    '1,370 AZN (8,000×14% + 1,000×25%)',
+        pit_actual:      `${result.pit} AZN`,
+        health_expected: '82.5 AZN ((2,500×2%) + (6,500×0.5%))',
+        health_actual:   `${result.empHealth} AZN`,
+        net_expected:    '7,232.5 AZN',
+        net_actual:      `${result.net} AZN`,
+        match:           result.pit === 1370 && result.net === 7232.5,
       } : undefined
       return { ...result, checks }
     }

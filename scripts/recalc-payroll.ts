@@ -21,23 +21,26 @@ const db = createClient(
 // ── Reference check (no DB needed) ───────────────────────────────────────────
 
 function referenceCheck() {
+  // 9,000 AZN gross, private_non_oil, not main workplace (no Art.102 deduction)
+  // HI 2026: (2,500×2%) + (6,500×0.5%) = 50 + 32.5 = 82.5 AZN
+  // Net: 9,000 − PIT(1,370) − SI(270) − HI(82.5) − UI(45) = 7,232.5 AZN
   console.log('\n📐 Reference check — Gross 9,000 AZN (private_non_oil, not main workplace):')
   const r = calcPayroll(9000, 'private_non_oil', false)
   const ok = (field: string, got: number, exp: number) => {
-    const pass = got === exp
+    const pass = Math.abs(got - exp) < 0.001
     console.log(`   ${pass ? '✅' : '❌'} ${field.padEnd(20)} got=${got}  expected=${exp}`)
     return pass
   }
   const all = [
-    ok('PIT',              r.pit,             1370),
-    ok('empSocial',        r.empSocial,         270),
-    ok('empHealth',        r.empHealth,          45),
-    ok('empUnemployment',  r.empUnemployment,    45),
-    ok('netSalary',        r.netSalary,        7270),
-    ok('emplrSocial',      r.emplrSocial,      1980),
-    ok('emplrHealth',      r.emplrHealth,        45),
-    ok('emplrUnemployment',r.emplrUnemployment,   0),
-    ok('totalEmployerCost',r.totalEmployerCost,11025),
+    ok('PIT',              r.pit,              1370),
+    ok('empSocial',        r.empSocial,          270),
+    ok('empHealth',        r.empHealth,           82.5),   // (2,500×2%)+(6,500×0.5%)
+    ok('empUnemployment',  r.empUnemployment,      45),
+    ok('netSalary',        r.netSalary,         7232.5),
+    ok('emplrSocial',      r.emplrSocial,        1980),
+    ok('emplrHealth',      r.emplrHealth,          82.5),
+    ok('emplrUnemployment',r.emplrUnemployment,    45),
+    ok('totalEmployerCost',r.totalEmployerCost, 11107.5),  // 9000+1980+82.5+45
   ]
   return all.every(Boolean)
 }

@@ -101,19 +101,22 @@ export function calcPayroll(
       ? r2(taxable * 0.14)
       : r2(1120 + (taxable - 8000) * 0.25)
 
-    // Employee: SI 3%, HI 0.5%, UI 0.5%
+    // Health 2026: 2% on gross ≤ 2,500 + 0.5% on gross > 2,500 (employee AND employer)
+    const health = (g: number) => r2(Math.min(g, 2500) * 0.02 + Math.max(0, g - 2500) * 0.005)
+
+    // Employee: SI 3%, HI bracket, UI 0.5%
     const empSocial       = r2(gross * 0.03)
-    const empHealth       = r2(gross * 0.005)
+    const empHealth       = health(gross)
     const empUnemployment = r2(gross * 0.005)
 
     const totalEmpDeductions = r2(pit + empSocial + empHealth + empUnemployment)
     const netSalary          = r2(gross - totalEmpDeductions)
 
-    // Employer: SI 22%, HI 0.5% — no employer UI in Azerbaijan
+    // Employer: SI 22%, HI same bracket as employee, UI 0.5%
     const emplrSocial      = r2(gross * 0.22)
-    const emplrHealth      = r2(gross * 0.005)
-    const emplrUnemployment = 0
-    const totalEmployerCost = r2(gross + emplrSocial + emplrHealth)
+    const emplrHealth      = empHealth
+    const emplrUnemployment = r2(gross * 0.005)
+    const totalEmployerCost = r2(gross + emplrSocial + emplrHealth + emplrUnemployment)
 
     return {
       gross, pitDeduction, pit, empSocial, empHealth, empUnemployment,
