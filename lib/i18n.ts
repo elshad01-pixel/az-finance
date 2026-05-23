@@ -694,6 +694,25 @@ const en = {
   'del.deliveryConfirmed':  'Delivery confirmed',
   'del.cogs':               'COGS',
   'del.selectSO':           'Select Sales Order…',
+
+  // ── Margin Report ────────────────────────────────────────────────────────
+  'mar.tabLabel':           'Margin Report',
+  'mar.title':              'Gross Margin Report',
+  'mar.totalRevenue':       'Total Revenue',
+  'mar.totalCogs':          'COGS (Cost of Goods)',
+  'mar.grossMargin':        'Gross Margin',
+  'mar.marginPct':          'Margin %',
+  'mar.productName':        'Product',
+  'mar.sku':                'SKU',
+  'mar.qtySold':            'Qty Sold',
+  'mar.revenue':            'Revenue',
+  'mar.cogs':               'COGS',
+  'mar.grossProfit':        'Gross Profit',
+  'mar.top3':               'Top 3 Products',
+  'mar.bottom3':            'Bottom 3 Products',
+  'mar.noData':             'No delivery data for this period.',
+  'mar.allPeriods':         'All Time',
+  'mar.chartTitle':         'Revenue vs COGS vs Gross Profit',
 } as const
 
 const az: Record<keyof typeof en, string> = {
@@ -1390,6 +1409,25 @@ const az: Record<keyof typeof en, string> = {
   'del.deliveryConfirmed':  'Çatdırılma təsdiqləndi',
   'del.cogs':               'Maya Dəyəri',
   'del.selectSO':           'Satış Sifarişi seçin…',
+
+  // ── Margin Report ────────────────────────────────────────────────────────
+  'mar.tabLabel':           'Marja Hesabatı',
+  'mar.title':              'Ümumi Marja Hesabatı',
+  'mar.totalRevenue':       'Ümumi Gəlir',
+  'mar.totalCogs':          'SMD (Maya Dəyəri)',
+  'mar.grossMargin':        'Ümumi Marja',
+  'mar.marginPct':          'Marja Faizi %',
+  'mar.productName':        'Məhsul',
+  'mar.sku':                'SKU',
+  'mar.qtySold':            'Satılan Miq.',
+  'mar.revenue':            'Gəlir',
+  'mar.cogs':               'Maya Dəyəri',
+  'mar.grossProfit':        'Ümumi Mənfəət',
+  'mar.top3':               'Ən Yaxşı 3 Məhsul',
+  'mar.bottom3':            'Ən Zəif 3 Məhsul',
+  'mar.noData':             'Bu dövr üçün çatdırılma məlumatı yoxdur.',
+  'mar.allPeriods':         'Bütün Dövr',
+  'mar.chartTitle':         'Gəlir vs Maya Dəyəri vs Ümumi Mənfəət',
 } as const
 
 export const translations = { en, az } as const
