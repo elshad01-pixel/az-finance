@@ -31,6 +31,11 @@ const ANON_KEY       = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const TEST_EMAIL     = process.env.TEST_USER_EMAIL
 const TEST_PASSWORD  = process.env.TEST_USER_PASSWORD
 const NO_CLEANUP     = process.argv.includes('--no-cleanup')
+const VERBOSE        = process.argv.includes('--verbose')
+const MODULE_FILTER  = (() => {
+  const idx = process.argv.indexOf('--module')
+  return idx !== -1 ? (process.argv[idx + 1] ?? '').toLowerCase() : null
+})()
 
 if (!ANTHROPIC_KEY)                  { console.error('❌ ANTHROPIC_API_KEY not in .env.local');  process.exit(1) }
 if (!SUPABASE_URL || (!SERVICE_KEY && !ANON_KEY)) { console.error('❌ Supabase credentials missing'); process.exit(1) }
@@ -486,7 +491,9 @@ async function runAgent() {
   console.log(`\n   Run ID  : ${RUN_ID}`)
   console.log(`   Tarix   : ${nowAz}`)
   console.log(`   Auth    : ${SERVICE_KEY ? 'Service Role Key ✓' : 'Anon Key (RLS aktiv)'}`)
-  console.log(`   Cleanup : ${NO_CLEANUP ? 'Söndürülüb (--no-cleanup)' : 'Aktiv'}\n`)
+  console.log(`   Cleanup : ${NO_CLEANUP ? 'Söndürülüb (--no-cleanup)' : 'Aktiv'}`)
+  console.log(`   Modul   : ${MODULE_FILTER ? `Yalnız --module ${MODULE_FILTER}` : 'Bütün 7 faza'}`)
+  console.log(`   Verbose : ${VERBOSE ? 'Aktiv' : 'Söndürülüb'}\n`)
   console.log('─'.repeat(64))
 
   // Authenticate if needed
@@ -497,8 +504,56 @@ async function runAgent() {
     console.log(` ✓ (${TEST_EMAIL})`)
   }
 
-  const userMsg = `
-Salam Aytaç! AzFinance ERP-nin tam 7 fazalı auditini aparın.
+  const PHASE_PROMPTS: Record<string, string> = {
+    payroll: `Salam Aytaç! Yalnız PHASE 5 — Payroll (Əmək haqqı) auditini aparın.
+
+Run ID: ${RUN_ID}
+Tarix: ${nowAz}
+
+Addımlar:
+1. employees, payroll_runs, payroll_entries cədvəllərinin mövcudluğunu yoxlayın.
+2. Mövcud payroll_entries-dən nümunə götürün (gross_salary, pit, emp_social, emp_health, emp_unemployment, net_salary).
+3. verify_payroll aləti ilə hər nümunəni yoxlayın — hesablanmış dəyərlər app ilə üst-üstə düşürmü?
+4. Azərbaycan qanununa uyğunluğu report_test ilə qeyd edin.
+5. Fazanı bitirdikdən sonra save_report ilə hesabat yazın.
+
+YALNIZ Phase 5. Digər fazaları keçin.`,
+
+    warehouse: `Salam Aytaç! Yalnız PHASE 2 — Warehouse (Anbar) auditini aparın.
+Run ID: ${RUN_ID}
+products, product_batches, warehouse_stock cədvəllərini yoxlayın.
+Hər test üçün report_test çağırın. Sonra save_report yazın.`,
+
+    sales: `Salam Aytaç! Yalnız PHASE 3 — Sales (Satış) auditini aparın.
+Run ID: ${RUN_ID}
+sales_orders, deliveries, invoices cədvəllərini yoxlayın.
+COGS düzgünlüyünü, ƏDV 18% yoxlayın. Hər test üçün report_test. Sonra save_report.`,
+
+    accounting: `Salam Aytaç! Yalnız PHASE 4 — Accounting (Mühasibat) auditini aparın.
+Run ID: ${RUN_ID}
+İnvoice ƏDV 18%, P&L gəlir tutarlılığı, COGS düzgünlüyünü yoxlayın.
+Hər test üçün report_test. Sonra save_report.`,
+
+    procurement: `Salam Aytaç! Yalnız PHASE 1 — Procurement (Satınalma) auditini aparın.
+Run ID: ${RUN_ID}
+purchase_requests, purchase_orders, goods_receipts cədvəllərini yoxlayın.
+GR → Expense avtomatizasiyasını, anbar yeniləməsini yoxlayın.
+Hər test üçün report_test. Sonra save_report.`,
+
+    reports: `Salam Aytaç! Yalnız PHASE 6 — Reports (Hesabatlar) auditini aparın.
+Run ID: ${RUN_ID}
+Marja faizi, P&L tutarlılığı, cogs=0 məhsulları yoxlayın.
+Hər test üçün report_test. Sonra save_report.`,
+
+    tax: `Salam Aytaç! Yalnız PHASE 7 — Tax Compliance (Vergi Auditi) aparın.
+Run ID: ${RUN_ID}
+ƏDV həddini, invoice vergi sahələrini, əmək haqqı tutmalarını yoxlayın.
+verify_tax və verify_payroll istifadə edin. Hər test üçün report_test. Sonra save_report.`,
+  }
+
+  const userMsg = MODULE_FILTER && PHASE_PROMPTS[MODULE_FILTER]
+    ? PHASE_PROMPTS[MODULE_FILTER]
+    : `Salam Aytaç! AzFinance ERP-nin tam 7 fazalı auditini aparın.
 
 Run ID: ${RUN_ID}  ← yaratdığınız hər test qeydinə bu etiket əlavə edin
 Tarix: ${nowAz}
@@ -507,8 +562,7 @@ Hər test üçün db_query ilə real məlumatları sorğulayın, nəticəni repo
 Vergi hesablamaları üçün verify_payroll / verify_tax alətlərindən istifadə edin.
 Bütün 7 faza başa çatdıqdan sonra save_report ilə ətraflı hesabat yazın.
 
-Başlayın — Phase 1: Procurement ilə.
-`.trim()
+Başlayın — Phase 1: Procurement ilə.`
 
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMsg }]
   let iter = 0
@@ -522,12 +576,16 @@ Başlayın — Phase 1: Procurement ilə.
       messages,
     })
 
-    // Surface phase headers from agent narrative
+    // Surface agent narrative (all text in verbose, phase headers otherwise)
     for (const b of res.content) {
       if (b.type === 'text') {
-        for (const line of b.text.split('\n')) {
-          if (/^#{1,3}\s|Phase \d|Faza \d/i.test(line.trim()) && line.trim().length > 3) {
-            console.log(`\n${line.trim()}`)
+        if (VERBOSE) {
+          console.log('\n' + b.text)
+        } else {
+          for (const line of b.text.split('\n')) {
+            if (/^#{1,3}\s|Phase \d|Faza \d/i.test(line.trim()) && line.trim().length > 3) {
+              console.log(`\n${line.trim()}`)
+            }
           }
         }
       }

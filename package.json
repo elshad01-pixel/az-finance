@@ -6,8 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:agent": "tsx scripts/aytac-test-agent.ts",
-    "test:agent:keep": "tsx scripts/aytac-test-agent.ts --no-cleanup"
+    "test:agent": "tsx scripts/test-agent.ts",
+    "test:agent:verbose": "tsx scripts/test-agent.ts --verbose",
+    "test:agent:payroll": "tsx scripts/test-agent.ts --module payroll",
+    "test:agent:keep": "tsx scripts/test-agent.ts --no-cleanup",
+    "test:agent:legacy": "tsx scripts/aytac-test-agent.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

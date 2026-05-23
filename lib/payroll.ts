@@ -89,42 +89,31 @@ export function calcPayroll(
   sector: PayrollSector,
   isMainWorkplace: boolean,
 ): PayrollResult {
+  const r2 = (n: number) => Math.round(n * 100) / 100
+
   if (sector === 'private_non_oil') {
-    // Main workplace deduction: AZN 200 if gross ≤ 2,500
+    // Art. 102 Vergi Məcəlləsi: 200 AZN aylıq güzəşt — əsas iş yeri, gross ≤ 2,500
     const pitDeduction = isMainWorkplace && gross <= 2500 ? 200 : 0
     const taxable = Math.max(0, gross - pitDeduction)
 
-    // PIT — progressive (private sector)
-    let pit: number
-    if (taxable <= 2500)       pit = taxable * 0.03
-    else if (taxable <= 8000)  pit = 75  + (taxable - 2500) * 0.10
-    else                       pit = 625 + (taxable - 8000) * 0.14
+    // PIT — Azerbaijan law: 14% up to 8,000 AZN; 25% on excess
+    const pit = taxable <= 8000
+      ? r2(taxable * 0.14)
+      : r2(1120 + (taxable - 8000) * 0.25)
 
-    // Employee social insurance
-    const empSocial = gross <= 200
-      ? gross * 0.03
-      : 6 + (gross - 200) * 0.10
+    // Employee: SI 3%, HI 0.5%, UI 0.5%
+    const empSocial       = r2(gross * 0.03)
+    const empHealth       = r2(gross * 0.005)
+    const empUnemployment = r2(gross * 0.005)
 
-    // Employee health insurance
-    const empHealth = gross <= 2500
-      ? gross * 0.02
-      : 50 + (gross - 2500) * 0.005
+    const totalEmpDeductions = r2(pit + empSocial + empHealth + empUnemployment)
+    const netSalary          = r2(gross - totalEmpDeductions)
 
-    // Employee unemployment insurance
-    const empUnemployment = gross * 0.005
-
-    const totalEmpDeductions = pit + empSocial + empHealth + empUnemployment
-    const netSalary          = gross - totalEmpDeductions
-
-    // Employer social insurance
-    const emplrSocial = gross <= 200
-      ? gross * 0.22
-      : 44 + (gross - 200) * 0.15
-
-    // Employer health insurance (same rate as employee)
-    const emplrHealth        = empHealth
-    const emplrUnemployment  = gross * 0.005
-    const totalEmployerCost  = gross + emplrSocial + emplrHealth + emplrUnemployment
+    // Employer: SI 22%, HI 0.5% — no employer UI in Azerbaijan
+    const emplrSocial      = r2(gross * 0.22)
+    const emplrHealth      = r2(gross * 0.005)
+    const emplrUnemployment = 0
+    const totalEmployerCost = r2(gross + emplrSocial + emplrHealth)
 
     return {
       gross, pitDeduction, pit, empSocial, empHealth, empUnemployment,
@@ -134,24 +123,26 @@ export function calcPayroll(
   }
 
   // ── Oil/gas & public sector ────────────────────────────────────────────
+  // No monthly deduction, no health/unemployment insurance for employee
   const pitDeduction = 0
+  const taxable = gross
 
-  // PIT — progressive (oil/gas)
-  const pit = gross <= 2500
-    ? gross * 0.14
-    : 350 + (gross - 2500) * 0.25
+  // PIT — same progressive brackets as private sector
+  const pit = taxable <= 8000
+    ? r2(taxable * 0.14)
+    : r2(1120 + (taxable - 8000) * 0.25)
 
-  const empSocial      = gross * 0.03
-  const empHealth      = 0
+  const empSocial       = r2(gross * 0.03)
+  const empHealth       = 0
   const empUnemployment = 0
 
-  const totalEmpDeductions = pit + empSocial
-  const netSalary          = gross - totalEmpDeductions
+  const totalEmpDeductions = r2(pit + empSocial)
+  const netSalary          = r2(gross - totalEmpDeductions)
 
-  const emplrSocial        = gross * 0.22
-  const emplrHealth        = 0
-  const emplrUnemployment  = 0
-  const totalEmployerCost  = gross + emplrSocial
+  const emplrSocial      = r2(gross * 0.22)
+  const emplrHealth      = 0
+  const emplrUnemployment = 0
+  const totalEmployerCost = r2(gross + emplrSocial)
 
   return {
     gross, pitDeduction, pit, empSocial, empHealth, empUnemployment,
