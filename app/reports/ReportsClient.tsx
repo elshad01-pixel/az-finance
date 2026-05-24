@@ -13,7 +13,7 @@ type BusinessType = 'general' | 'trade_food'
 type TFn          = (key: TranslationKey) => string
 
 interface Invoice { date: string; status: string; amount: number }
-interface Expense { date: string; category: string; amount: number }
+interface Expense { date: string; category: string | null; amount: number }
 
 interface DelItem {
   product_id: string | null
@@ -36,7 +36,7 @@ interface Delivery {
   items: DelItem[]
   sales_orders: { items: DelSOItem[] } | null
 }
-interface ProductInfo { id: string; name: string; sku: string }
+interface ProductInfo { id: string; name: string; sku: string; sale_price: number }
 interface MarginRow {
   product_id: string
   name: string
@@ -188,7 +188,7 @@ function Arrow({ curr, prev, invert = false }: { curr: number; prev: number; inv
         ? <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" /></svg>
         : <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" /></svg>
       }
-      {Math.abs(pct).toFixed(1)}%
+      {Math.min(Math.abs(pct), 999).toFixed(1)}%
     </span>
   )
 }
@@ -265,10 +265,13 @@ export default function ReportsClient() {
       supabase.from('tax_settings').select('tax_regime, business_type, simplified_eligible, vat_registered').maybeSingle(),
       supabase.from('company_settings').select('company_name').maybeSingle(),
       supabase.from('deliveries').select('id, delivery_date, status, cogs_amount, items, sales_orders(items)').eq('status', 'confirmed'),
-      supabase.from('products').select('id, name, sku'),
+      supabase.from('products').select('id, name, sku, sale_price'),
     ]).then(([inv, exp, tax, co, del_, prod]) => {
       setInvoices((inv.data as Invoice[]) ?? [])
-      setExpenses((exp.data as Expense[]) ?? [])
+      setExpenses(((exp.data as Expense[]) ?? []).map(e => ({
+        ...e,
+        category: e.category || 'Other',
+      })))
       setTaxSettings(tax.data as TaxSettings | null)
       setCompanyName(co.data?.company_name ?? '')
       setDeliveries((del_.data as unknown as Delivery[]) ?? [])
@@ -299,15 +302,30 @@ export default function ReportsClient() {
     prev: pExp.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0),
   })).filter(r => r.curr > 0 || r.prev > 0)
 
-  const totalExp     = cExp.reduce((s, e) => s + e.amount, 0)
-  const prevTotalExp = pExp.reduce((s, e) => s + e.amount, 0)
+  // Split into COGS and operating expenses
+  const cogsRows = catRows.filter(r => r.cat === 'COGS')
+  const opexRows = catRows.filter(r => r.cat !== 'COGS')
 
-  const gross     = collected - totalExp
-  const prevGross = prevCollected - prevTotalExp
-  const tax       = calcTax(gross, collected, taxSettings)
-  const prevTax   = calcTax(prevGross, prevCollected, taxSettings)
-  const net       = gross - tax
-  const prevNet   = prevGross - prevTax
+  const totalCogs     = cogsRows.reduce((s, r) => s + r.curr, 0)
+  const prevTotalCogs = cogsRows.reduce((s, r) => s + r.prev, 0)
+  const totalOpEx     = opexRows.reduce((s, r) => s + r.curr, 0)
+  const prevTotalOpEx = opexRows.reduce((s, r) => s + r.prev, 0)
+  const totalExp      = totalCogs + totalOpEx
+  const prevTotalExp  = prevTotalCogs + prevTotalOpEx
+
+  const grossProfit     = collected - totalCogs
+  const prevGrossProfit = prevCollected - prevTotalCogs
+  const netBeforeTax    = grossProfit - totalOpEx
+  const prevNetBefore   = prevGrossProfit - prevTotalOpEx
+
+  const tax     = netBeforeTax  > 0 ? calcTax(netBeforeTax,  collected,     taxSettings) : 0
+  const prevTax = prevNetBefore > 0 ? calcTax(prevNetBefore, prevCollected, taxSettings) : 0
+
+  // aliases kept for PDF export compatibility
+  const gross     = netBeforeTax
+  const prevGross = prevNetBefore
+  const net       = netBeforeTax - tax
+  const prevNet   = prevNetBefore - prevTax
 
   const pLabel = periodLabel(period, range.from, range.to, lang, t('mar.allPeriods'))
   const tLabel = taxLabel(taxSettings, t)
@@ -329,11 +347,15 @@ export default function ReportsClient() {
     const totalStockQty = stockItems.reduce((s, it) => s + (it.delivered_qty ?? 0), 0)
 
     for (let i = 0; i < del.items.length; i++) {
-      const item     = del.items[i]
-      const soItem   = soItems[i]
-      const qty      = item.delivered_qty ?? 0
-      const unitPrice = soItem?.unit_price ?? 0
-      const revenue  = qty * unitPrice
+      const item    = del.items[i]
+      const soItem  = item.product_id
+        ? (soItems.find(s => s.product_id === item.product_id) ?? soItems[i])
+        : soItems[i]
+      const qty     = item.delivered_qty ?? 0
+      const product = item.product_id ? productMap.get(item.product_id) : undefined
+      // Prefer live products.sale_price; fall back to the price recorded on the SO
+      const unitPrice = (product?.sale_price ?? 0) > 0 ? product!.sale_price : (soItem?.unit_price ?? 0)
+      const revenue = qty * unitPrice
 
       if (!item.is_stock_item || !item.product_id) {
         totalMarginRevenue += revenue
@@ -382,8 +404,12 @@ export default function ReportsClient() {
     const existing = monthlyMap.get(key) ?? { revenue: 0, cogs: 0, gross_profit: 0 }
     const soItems  = del.sales_orders?.items ?? []
     const delRevenue = del.items.reduce((s, it, i) => {
-      const soItem = soItems[i]
-      return s + (it.delivered_qty ?? 0) * (soItem?.unit_price ?? 0)
+      const soItem  = it.product_id
+        ? (soItems.find(s2 => s2.product_id === it.product_id) ?? soItems[i])
+        : soItems[i]
+      const product = it.product_id ? productMap.get(it.product_id) : undefined
+      const price   = (product?.sale_price ?? 0) > 0 ? product!.sale_price : (soItem?.unit_price ?? 0)
+      return s + (it.delivered_qty ?? 0) * price
     }, 0)
     existing.revenue      += delRevenue
     existing.cogs         += del.cogs_amount
@@ -458,7 +484,7 @@ export default function ReportsClient() {
   const chartH = CH - PT - PB
   const maxBarVal = Math.max(...monthlyBars.flatMap(b => [b.revenue, b.cogs, b.gross_profit]), 1)
   const barGroupW = monthlyBars.length > 0 ? chartW / monthlyBars.length : chartW
-  const bw = Math.min(barGroupW * 0.25, 14)
+  const bw = Math.min(barGroupW / 6, 28)
   const barY = (v: number) => PT + chartH - (v / maxBarVal) * chartH
   const barH = (v: number) => (v / maxBarVal) * chartH
 
@@ -578,36 +604,53 @@ export default function ReportsClient() {
 
             {/* REVENUE */}
             <SectionHead label={t('rep.revenue')} cls="bg-blue-50 border-blue-100 text-blue-700" />
-            <PLRow label={t('rep.totalInvoiced')}   curr={totalInvoiced}     prev={prevTotalInvoiced} indent />
-            <PLRow label={t('rep.collected')}        curr={collected}         prev={prevCollected}     indent />
-            <PLRow label={t('rep.outstanding')}      curr={outstanding}       prev={prevOutstanding}   indent />
+            <PLRow label={t('rep.totalInvoiced')} curr={totalInvoiced} prev={prevTotalInvoiced} indent />
+            <PLRow label={t('rep.collected')}     curr={collected}     prev={prevCollected}     indent />
+            <PLRow label={t('rep.outstanding')}   curr={outstanding}   prev={prevOutstanding}   indent />
 
-            {/* EXPENSES */}
-            <SectionHead label={t('rep.expenses')} cls="bg-red-50 border-red-100 text-red-700" />
-            {catRows.length === 0 && (
-              <p className="text-sm text-gray-400 italic px-5 py-3">{t('rep.noExpenses')}</p>
-            )}
-            {catRows.map(r => {
-              const i18nKey = CATEGORY_I18N[r.cat]
-              const label   = i18nKey ? t(i18nKey as TranslationKey) : r.cat
-              return <PLRow key={r.cat} label={label} curr={r.curr} prev={r.prev} indent invert />
-            })}
-            <PLRow label={t('rep.totalExpenses')} curr={totalExp} prev={prevTotalExp} bold invert />
+            {/* COST OF GOODS SOLD */}
+            <SectionHead label={t('rep.cogs')} cls="bg-orange-50 border-orange-100 text-orange-700" />
+            {cogsRows.length === 0
+              ? <p className="text-sm text-gray-400 italic px-5 py-3">{t('rep.noCogs')}</p>
+              : cogsRows.map(r => (
+                  <PLRow key={r.cat} label={t('cat.COGS' as TranslationKey)} curr={r.curr} prev={r.prev} indent invert />
+                ))
+            }
+            <PLRow label={t('rep.totalCogs')} curr={totalCogs} prev={prevTotalCogs} bold invert />
 
-            {/* PROFIT */}
-            <SectionHead label={t('rep.profit')} cls="bg-green-50 border-green-100 text-green-700" />
+            {/* GROSS PROFIT */}
             <PLRow
               label={t('rep.grossProfit')}
-              curr={gross} prev={prevGross}
-              indent
-              highlight={gross >= 0 ? 'green' : 'red'}
+              curr={grossProfit} prev={prevGrossProfit}
+              bold highlight={grossProfit >= 0 ? 'green' : 'red'}
             />
-            <PLRow label={tLabel} curr={tax} prev={prevTax} indent invert />
+
+            {/* OPERATING EXPENSES */}
+            <SectionHead label={t('rep.expenses')} cls="bg-red-50 border-red-100 text-red-700" />
+            {opexRows.length === 0
+              ? <p className="text-sm text-gray-400 italic px-5 py-3">{t('rep.noExpenses')}</p>
+              : opexRows.map(r => {
+                  const i18nKey = CATEGORY_I18N[r.cat]
+                  const label   = i18nKey ? t(i18nKey as TranslationKey) : r.cat
+                  return <PLRow key={r.cat} label={label} curr={r.curr} prev={r.prev} indent invert />
+                })
+            }
+            <PLRow label={t('rep.totalOpEx')} curr={totalOpEx} prev={prevTotalOpEx} bold invert />
+
+            {/* NET PROFIT */}
+            <SectionHead label={t('rep.profit')} cls="bg-green-50 border-green-100 text-green-700" />
+            <PLRow
+              label={t('rep.netBeforeTax')}
+              curr={netBeforeTax} prev={prevNetBefore}
+              indent highlight={netBeforeTax >= 0 ? 'green' : 'red'}
+            />
+            {netBeforeTax > 0 && (
+              <PLRow label={tLabel} curr={tax} prev={prevTax} indent invert />
+            )}
             <PLRow
               label={t('rep.netProfit')}
               curr={net} prev={prevNet}
-              bold
-              highlight={net >= 0 ? 'green' : 'red'}
+              bold highlight={net >= 0 ? 'green' : 'red'}
             />
 
             {/* Card footer */}
@@ -649,12 +692,13 @@ export default function ReportsClient() {
               <svg viewBox={`0 0 ${CW} ${CH}`} preserveAspectRatio="none" className="w-full h-48">
                 {/* Y gridlines */}
                 {[0, 0.25, 0.5, 0.75, 1].map(f => {
-                  const y = PT + chartH * (1 - f)
+                  const val = maxBarVal * f
+                  const y   = PT + chartH * (1 - f)
                   return (
                     <g key={f}>
                       <line x1={PL} y1={y} x2={CW - PR} y2={y} stroke="#f0f0f0" strokeWidth="1" />
                       <text x={PL - 4} y={y + 4} fontSize="9" fill="#9ca3af" textAnchor="end">
-                        {(maxBarVal * f / 1000).toFixed(0)}k
+                        {val >= 1000 ? `₼${(val / 1000).toFixed(1)}k` : `₼${Math.round(val)}`}
                       </text>
                     </g>
                   )
@@ -698,14 +742,17 @@ export default function ReportsClient() {
                   </thead>
                   <tbody>
                     {marginRows.map(r => {
-                      const pctColor = r.margin_pct >= 30
+                      const pctColor = r.margin_pct > 0
                         ? 'text-green-700 bg-green-50'
-                        : r.margin_pct >= 10
-                          ? 'text-yellow-700 bg-yellow-50'
-                          : 'text-red-700 bg-red-50'
+                        : r.margin_pct < 0
+                          ? 'text-red-700 bg-red-50'
+                          : 'text-gray-600 bg-gray-50'
                       return (
                         <tr key={r.product_id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                          <td className="px-5 py-2.5 font-medium text-gray-900">{r.name}</td>
+                          <td className="px-5 py-2.5 font-medium text-gray-900">
+                            {r.name}
+                            {r.cogs === 0 && <span className="ml-2 text-amber-500 text-xs font-normal">⚠ No cost price</span>}
+                          </td>
                           <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{r.sku}</td>
                           <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{r.qty_sold.toLocaleString()}</td>
                           <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">{money(r.revenue)}</td>

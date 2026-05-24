@@ -945,8 +945,8 @@ export default function DashboardClient() {
         </div>
       )}
 
-      {/* VAT Threshold Monitor */}
-      {!loading && !vatRegistered && (
+      {/* VAT Threshold Monitor — show when approaching or past threshold */}
+      {!loading && annualRevenue > 160_000 && (
         <div className="mt-5">
           <VatThresholdMonitor annualRevenue={annualRevenue} />
         </div>

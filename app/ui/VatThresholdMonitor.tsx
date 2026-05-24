@@ -36,7 +36,7 @@ export default function VatThresholdMonitor({ annualRevenue }: Props) {
   type Alert = { border: string; bg: string; text: string; iconColor: string; msg: string; icon: 'critical' | 'urgent' | 'warn' }
   const alert: Alert | null = isCritical
     ? { border: 'border-red-300',    bg: 'bg-red-50',    text: 'text-red-800',    iconColor: 'text-red-500',    icon: 'critical',
-        msg: 'Kritik: İllik gəliriniz ₼200,000 həddini keçib. Dərhal ƏDV qeydiyyatından keçməlisiniz!' }
+        msg: '⚠️ ƏDV qeydiyyatı tələb olunur — hədd aşılıb' }
     : isUrgent
     ? { border: 'border-orange-300', bg: 'bg-orange-50', text: 'text-orange-800', iconColor: 'text-orange-500', icon: 'urgent',
         msg: 'Təcili: İllik gəliriniz ₼190,000-i keçib. ƏDV qeydiyyatı tezliklə məcburi olacaq.' }

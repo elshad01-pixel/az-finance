@@ -31,7 +31,31 @@
       "Bash(Get-ChildItem -Recurse -Force)",
       "Bash(Select-Object -First 50)",
       "Bash(node -e \"const p = require\\('./package.json'\\); const deps = {...p.dependencies, ...p.devDependencies}; const chart = Object.keys\\(deps\\).filter\\(k => /chart|recharts|victory|visx|d3/.test\\(k\\)\\); console.log\\(chart.length ? chart : 'none'\\)\")",
-      "Bash(npx supabase *)"
+      "Bash(npx supabase *)",
+      "Bash(supabase --version)",
+      "Bash(node -e \"const a = require\\('@anthropic-ai/sdk'\\); console.log\\('SDK version OK'\\)\")",
+      "Bash(grep -c \"ANTHROPIC_API_KEY\" .env.local)",
+      "Bash(grep -c \"SUPABASE_SERVICE_ROLE_KEY\" .env.local)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\" -Directory)",
+      "Bash(Select-Object Name)",
+      "Bash(Remove-Item *)",
+      "PowerShell(cd \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\"; npx tsc --noEmit 2>&1 | Where-Object { $_ -notmatch '\\\\.next' })",
+      "Bash(npx next *)",
+      "PowerShell(head *)",
+      "PowerShell(cd \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\"; npx tsc --noEmit 2>&1 | Where-Object { $_ -notmatch '\\\\.next' } | Select-Object -First 40)",
+      "PowerShell(cd \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\"; npx tsc --noEmit 2>&1 | Where-Object { $_ -notmatch '\\\\.next' } | Select-Object -First 30)",
+      "PowerShell(cd \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\"; npx tsc --noEmit 2>&1 | Where-Object { $_ -notmatch '\\\\.next' } | Select-Object -First 20)",
+      "Bash(Sort-Object)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); const d={...p.dependencies,...p.devDependencies}; console.log\\(Object.keys\\(d\\).filter\\(k=>/chart|recharts|d3|visx|nivo|victory/.test\\(k\\)\\)\\)\")",
+      "Bash(Get-Content \".next/dev/static/chunks/_0_c6f2r._.js\" -TotalCount 1600)",
+      "Bash(Select-Object -Last 50)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}, indent=2\\)\\)\")",
+      "PowerShell(if \\(Test-Path \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\\\\.env.local\"\\) { Write-Output \"EXISTS\"; Get-Content \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\\\\.env.local\" | ForEach-Object { if \\($_ -match '^\\([^=]+\\)='\\) { $matches[1] } } } else { Write-Output \"MISSING\" })",
+      "Bash(npx tsx *)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts', {}\\), indent=2\\)\\)\")",
+      "Bash(findstr /v \"KEY\\\\|SECRET\\\\|PASSWORD\\\\|TOKEN\")",
+      "PowerShell(Get-Content \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\\\\.env.local\" | Where-Object { $_ -match \"^NEXT_PUBLIC_SUPABASE_URL\" })",
+      "PowerShell(Get-Content \"C:\\\\Users\\\\Elshad Ganiyev\\\\Desktop\\\\az-finance\\\\.env.local\" | Where-Object { $_ -notmatch \"KEY|SECRET|PASSWORD|TOKEN\" })"
     ]
   }
 }

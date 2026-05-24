@@ -7,6 +7,8 @@ export type MainCategory =
   | 'Professional Services'
   | 'Bank & Finance'
   | 'Other'
+  | 'COGS'
+  | 'Depreciation'
 
 export type Frequency = 'monthly' | 'quarterly' | 'annual'
 
@@ -19,6 +21,8 @@ export const CATEGORY_MAP: Record<MainCategory, readonly string[]> = {
   'Professional Services': ['Legal', 'Accounting', 'Consulting', 'Training'],
   'Bank & Finance':        ['Bank Fees', 'Loan Interest', 'Currency Exchange'],
   'Other':                 ['Miscellaneous'],
+  'COGS':                  ['Cost of Goods Sold', 'Raw Materials', 'Freight In'],
+  'Depreciation':          ['Equipment', 'Vehicles', 'Buildings', 'Intangibles'],
 }
 
 export const MAIN_CATEGORIES = Object.keys(CATEGORY_MAP) as MainCategory[]
@@ -32,6 +36,8 @@ export const CATEGORY_STYLES: Record<MainCategory, string> = {
   'Professional Services': 'bg-teal-100   text-teal-700',
   'Bank & Finance':        'bg-indigo-100 text-indigo-700',
   'Other':                 'bg-gray-100   text-gray-600',
+  'COGS':                  'bg-red-100    text-red-700',
+  'Depreciation':          'bg-slate-100  text-slate-700',
 }
 
 export const CATEGORY_DOT: Record<MainCategory, string> = {
@@ -43,6 +49,8 @@ export const CATEGORY_DOT: Record<MainCategory, string> = {
   'Professional Services': 'bg-teal-400',
   'Bank & Finance':        'bg-indigo-400',
   'Other':                 'bg-gray-400',
+  'COGS':                  'bg-red-400',
+  'Depreciation':          'bg-slate-400',
 }
 
 // Maps English display name → i18n key (use with 'as TranslationKey' in components)
@@ -55,6 +63,8 @@ export const CATEGORY_I18N: Record<string, string> = {
   'Professional Services': 'cat.ProfessionalServices',
   'Bank & Finance':        'cat.BankFinance',
   'Other':                 'cat.Other',
+  'COGS':                  'cat.COGS',
+  'Depreciation':          'cat.Depreciation',
 }
 
 export const SUBCATEGORY_I18N: Record<string, string> = {
