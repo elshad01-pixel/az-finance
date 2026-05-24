@@ -31,6 +31,7 @@ interface SalesOrder {
   invoice_id:    number | null
   created_at:    string
   clients:       { company: string } | null
+  deliveries?:   { id: string; delivery_number: string; status: string }[] | null
 }
 
 interface Client  { id: number; company: string; email: string; address: string }
@@ -92,7 +93,7 @@ export default function SalesOrdersClient() {
 
   const load = useCallback(async () => {
     const [ordRes, cliRes, prodRes] = await Promise.all([
-      supabase.from('sales_orders').select('*, clients(company)').order('created_at', { ascending: false }).limit(300),
+      supabase.from('sales_orders').select('*, clients(company), deliveries(id, delivery_number, status)').order('created_at', { ascending: false }).limit(300),
       supabase.from('clients').select('id, company, email, address').order('company'),
       supabase.from('products').select('id, sku, name, unit, sale_price, stock_qty').eq('status', 'active').order('name'),
     ])
@@ -323,7 +324,14 @@ export default function SalesOrdersClient() {
                         </a>
                       )}
                       {(o.status === 'draft' || o.status === 'confirmed') && (
-                        <button onClick={() => setConfirmAction({ id: o.id, action: 'cancel', number: o.so_number })}
+                        <button onClick={() => {
+                          const confirmedDel = o.deliveries?.find(d => d.status === 'confirmed')
+                          if (confirmedDel) {
+                            showToast(t('so.cancelBlockedByDelivery').replace('{del}', confirmedDel.delivery_number))
+                            return
+                          }
+                          setConfirmAction({ id: o.id, action: 'cancel', number: o.so_number })
+                        }}
                           className="text-xs text-red-400 hover:text-red-600 px-2 py-1 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap">
                           {t('so.cancelOrder')}
                         </button>

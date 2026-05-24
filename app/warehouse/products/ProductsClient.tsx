@@ -1,25 +1,28 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
 import type { TranslationKey } from '@/lib/i18n'
+import { generateSKU, validateSKU, parseSKU } from '@/lib/sku'
 
 type ProductStatus = 'active' | 'inactive'
-type ProductUnit = 'əd' | 'kq' | 'q' | 'litr' | 'ml' | 'm' | 'm²' | 'm³' | 'qutu' | 'dəst'
+type ProductUnit   = 'əd' | 'kq' | 'q' | 'litr' | 'ml' | 'm' | 'm²' | 'm³' | 'qutu' | 'dəst'
 
 interface Product {
-  id:              string
-  sku:             string
-  name:            string
-  description:     string | null
-  category:        string | null
-  unit:            ProductUnit
-  cost_price:      number
-  sale_price:      number
-  stock_qty:       number
-  min_stock_level: number
-  status:          ProductStatus
+  id:               string
+  sku:              string
+  name:             string
+  description:      string | null
+  category:         string | null
+  unit:             ProductUnit
+  cost_price:       number
+  sale_price:       number
+  stock_qty:        number
+  min_stock_level:  number
+  status:           ProductStatus
+  sku_manually_set?: boolean
+  sku_generated_at?: string | null
 }
 
 const UNITS: ProductUnit[] = ['əd','kq','q','litr','ml','m','m²','m³','qutu','dəst']
@@ -27,17 +30,17 @@ const UNITS: ProductUnit[] = ['əd','kq','q','litr','ml','m','m²','m³','qutu',
 function fmt(n: number) {
   return `₼ ${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
-
 function fmtQty(n: number) {
   return n % 1 === 0 ? String(n) : n.toFixed(3).replace(/\.?0+$/, '')
 }
-
 function stockClass(p: Product) {
   if (p.min_stock_level <= 0) return ''
   if (p.stock_qty < p.min_stock_level) return 'bg-red-50'
   if (p.stock_qty < p.min_stock_level * 1.5) return 'bg-yellow-50'
   return ''
 }
+
+type SkuState = 'idle' | 'valid' | 'invalid' | 'duplicate' | 'legacy'
 
 export default function ProductsClient() {
   const { t, lang } = useLanguage()
@@ -54,26 +57,32 @@ export default function ProductsClient() {
   const [toast,          setToast]          = useState<string | null>(null)
 
   // Adjustment modal
-  const [showAdjModal,   setShowAdjModal]   = useState(false)
-  const [adjProduct,     setAdjProduct]     = useState<Product | null>(null)
-  const [adjQty,         setAdjQty]         = useState('')
-  const [adjNotes,       setAdjNotes]       = useState('')
-  const [adjSaving,      setAdjSaving]      = useState(false)
-  const [adjError,       setAdjError]       = useState<string | null>(null)
+  const [showAdjModal, setShowAdjModal] = useState(false)
+  const [adjProduct,   setAdjProduct]   = useState<Product | null>(null)
+  const [adjQty,       setAdjQty]       = useState('')
+  const [adjNotes,     setAdjNotes]     = useState('')
+  const [adjSaving,    setAdjSaving]    = useState(false)
+  const [adjError,     setAdjError]     = useState<string | null>(null)
 
   // Form fields
-  const [sku,           setSku]           = useState('')
-  const [name,          setName]          = useState('')
-  const [description,   setDescription]   = useState('')
-  const [category,      setCategory]      = useState('')
-  const [unit,          setUnit]          = useState<ProductUnit>('əd')
-  const [costPrice,     setCostPrice]     = useState('')
-  const [salePrice,     setSalePrice]     = useState('')
-  const [stockQty,      setStockQty]      = useState('')
-  const [minStock,      setMinStock]      = useState('')
-  const [status,        setStatus]        = useState<ProductStatus>('active')
+  const [sku,          setSku]          = useState('')
+  const [skuState,     setSkuState]     = useState<SkuState>('idle')
+  const [skuManual,    setSkuManual]    = useState(false)
+  const [vendorName,   setVendorName]   = useState('')
+  const [name,         setName]         = useState('')
+  const [description,  setDescription]  = useState('')
+  const [category,     setCategory]     = useState('')
+  const [unit,         setUnit]         = useState<ProductUnit>('əd')
+  const [costPrice,    setCostPrice]    = useState('')
+  const [salePrice,    setSalePrice]    = useState('')
+  const [stockQty,     setStockQty]     = useState('')
+  const [minStock,     setMinStock]     = useState('')
+  const [status,       setStatus]       = useState<ProductStatus>('active')
 
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const toastTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const productsRef  = useRef<Product[]>([])
+
+  useEffect(() => { productsRef.current = products }, [products])
 
   function notify(msg: string) {
     setToast(msg)
@@ -86,8 +95,30 @@ export default function ProductsClient() {
     setProducts((data as Product[]) ?? [])
     setLoading(false)
   }
-
   useEffect(() => { load() }, [])
+
+  // ── SKU auto-generation ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (editingProduct || skuManual || !category) return
+    const existing = productsRef.current.map(p => p.sku)
+    setSku(generateSKU(category, vendorName, existing))
+  }, [category, vendorName, editingProduct, skuManual])
+
+  // ── SKU validation ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!sku) { setSkuState('idle'); return }
+    const formatOk = validateSKU(sku)
+    if (!formatOk) {
+      // If editing and SKU is unchanged → treat as legacy (don't flag red)
+      if (editingProduct && sku === editingProduct.sku) { setSkuState('legacy'); return }
+      setSkuState('invalid'); return
+    }
+    const isDupe = products.some(p => p.sku === sku && p.id !== editingProduct?.id)
+    setSkuState(isDupe ? 'duplicate' : 'valid')
+  }, [sku, products, editingProduct])
+
+  // ── Computed SKU breakdown (for tooltip) ────────────────────────────────────
+  const parsedSKU = useMemo(() => parseSKU(sku), [sku])
 
   const categories = [...new Set(products.map(p => p.category).filter(Boolean) as string[])].sort()
 
@@ -102,7 +133,8 @@ export default function ProductsClient() {
   })
 
   function resetForm() {
-    setSku(''); setName(''); setDescription(''); setCategory('')
+    setSku(''); setSkuState('idle'); setSkuManual(false); setVendorName('')
+    setName(''); setDescription(''); setCategory('')
     setUnit('əd'); setCostPrice(''); setSalePrice('')
     setStockQty(''); setMinStock(''); setStatus('active')
     setEditingProduct(null); setSaveError(null)
@@ -112,7 +144,12 @@ export default function ProductsClient() {
 
   function openEdit(p: Product) {
     setEditingProduct(p)
-    setSku(p.sku); setName(p.name); setDescription(p.description ?? '')
+    setSku(p.sku)
+    setSkuManual(p.sku_manually_set ?? false)
+    // Pre-fill vendor from parsed SKU supplier code
+    const parsed = parseSKU(p.sku)
+    setVendorName(parsed?.supplier ?? '')
+    setName(p.name); setDescription(p.description ?? '')
     setCategory(p.category ?? ''); setUnit(p.unit)
     setCostPrice(String(p.cost_price)); setSalePrice(String(p.sale_price))
     setStockQty(String(p.stock_qty)); setMinStock(String(p.min_stock_level))
@@ -129,18 +166,23 @@ export default function ProductsClient() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (skuState === 'duplicate') {
+      setSaveError(lang === 'az' ? 'Bu SKU artıq mövcuddur' : 'This SKU already exists')
+      return
+    }
     setSaving(true); setSaveError(null)
-    const payload = {
-      sku: sku.trim(),
-      name: name.trim(),
-      description: description.trim() || null,
-      category: category.trim() || null,
+    const payload: Record<string, unknown> = {
+      sku:              sku.trim(),
+      name:             name.trim(),
+      description:      description.trim() || null,
+      category:         category.trim() || null,
       unit,
-      cost_price: parseFloat(costPrice) || 0,
-      sale_price: parseFloat(salePrice) || 0,
-      stock_qty:  parseFloat(stockQty)  || 0,
-      min_stock_level: parseFloat(minStock) || 0,
+      cost_price:       parseFloat(costPrice) || 0,
+      sale_price:       parseFloat(salePrice)  || 0,
+      stock_qty:        parseFloat(stockQty)   || 0,
+      min_stock_level:  parseFloat(minStock)   || 0,
       status,
+      sku_manually_set: skuManual,
     }
     if (editingProduct) {
       const { error } = await supabase.from('products').update(payload).eq('id', editingProduct.id)
@@ -149,10 +191,7 @@ export default function ProductsClient() {
       const { error } = await supabase.from('products').insert(payload)
       if (error) { setSaveError(error.message); setSaving(false); return }
     }
-    setSaving(false)
-    setShowModal(false)
-    resetForm()
-    await load()
+    setSaving(false); setShowModal(false); resetForm(); await load()
     notify(t('wh.productSaved'))
   }
 
@@ -174,9 +213,7 @@ export default function ProductsClient() {
       setAdjError(error?.message ?? data?.error ?? 'Error')
       setAdjSaving(false); return
     }
-    setAdjSaving(false)
-    setShowAdjModal(false)
-    await load()
+    setAdjSaving(false); setShowAdjModal(false); await load()
     notify(t('wh.adjustSaved'))
   }
 
@@ -186,6 +223,15 @@ export default function ProductsClient() {
       <div className="h-96 bg-gray-100 rounded-xl" />
     </div>
   )
+
+  // ── Border colour helper ────────────────────────────────────────────────────
+  function skuBorder() {
+    if (skuState === 'valid')    return 'border-green-400 focus:ring-green-400 bg-green-50/30'
+    if (skuState === 'duplicate' || skuState === 'invalid')
+                                 return 'border-red-400 focus:ring-red-400 bg-red-50/30'
+    if (skuState === 'legacy')   return 'border-yellow-300 focus:ring-yellow-400 bg-yellow-50/30'
+    return 'border-gray-200 focus:ring-blue-500'
+  }
 
   return (
     <div>
@@ -219,8 +265,7 @@ export default function ProductsClient() {
           </svg>
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder={lang === 'az' ? 'Ad və ya artikul ilə axtar…' : 'Search by name or SKU…'}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-          />
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
         </div>
         <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -248,10 +293,8 @@ export default function ProductsClient() {
           <table className="w-full min-w-[900px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                {([
-                  'wh.sku', 'wh.productName', 'wh.category', 'wh.unit',
-                  'wh.stockQty', 'wh.minStockLevel', 'wh.costPrice', 'wh.salePrice',
-                ] as TranslationKey[]).map(k => (
+                {(['wh.sku','wh.productName','wh.category','wh.unit',
+                  'wh.stockQty','wh.minStockLevel','wh.costPrice','wh.salePrice'] as TranslationKey[]).map(k => (
                   <th key={k} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-3">
                     {t(k)}
                   </th>
@@ -267,7 +310,14 @@ export default function ProductsClient() {
                 const isWarn = !isLow && p.min_stock_level > 0 && p.stock_qty < p.min_stock_level * 1.5
                 return (
                   <tr key={p.id} className={`transition-colors ${rowCls || 'hover:bg-slate-50'}`}>
-                    <td className="px-4 py-3 text-sm font-mono text-gray-600">{p.sku}</td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-mono text-gray-600">{p.sku}</span>
+                      {p.sku_manually_set && (
+                        <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-wide text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded">
+                          {lang === 'az' ? 'Əl' : 'Manual'}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <p className="text-sm font-medium text-gray-900">{p.name}</p>
                       {p.description && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{p.description}</p>}
@@ -294,7 +344,7 @@ export default function ProductsClient() {
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-1">
                         <button onClick={() => openAdj(p)} title={t('wh.stockAdjustment')}
-                          className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2 py-1.5 rounded-lg border border-blue-200 transition-colors whitespace-nowrap">
+                          className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2 py-1.5 rounded-lg border border-blue-200 transition-colors">
                           ±
                         </button>
                         <button onClick={() => openEdit(p)} title={t('common.edit')}
@@ -314,16 +364,19 @@ export default function ProductsClient() {
         </div>
         {filtered.length === 0 && (
           <div className="text-center py-16 text-gray-400 text-sm">
-            {search || filterCat || filterStatus !== 'all' ? (lang === 'az' ? 'Nəticə tapılmadı' : 'No results') : t('wh.noProducts')}
+            {search || filterCat || filterStatus !== 'all'
+              ? (lang === 'az' ? 'Nəticə tapılmadı' : 'No results')
+              : t('wh.noProducts')}
           </div>
         )}
       </div>
 
-      {/* Add / Edit Modal */}
+      {/* ── Add / Edit Modal ───────────────────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-10 px-4"
           onClick={e => { if (e.target === e.currentTarget) { setShowModal(false); resetForm() } }}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl">
+
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="text-lg font-semibold text-gray-900">
                 {editingProduct ? t('wh.editProduct') : t('wh.addProduct')}
@@ -335,23 +388,126 @@ export default function ProductsClient() {
                 </svg>
               </button>
             </div>
+
             <form onSubmit={handleSubmit}>
               <div className="px-6 py-5 space-y-4">
-                {/* SKU + Name */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('wh.sku')}</label>
-                    <input type="text" required value={sku} onChange={e => setSku(e.target.value)}
-                      placeholder="ART-001"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+
+                {/* ── SKU field ────────────────────────────────────────────── */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-sm font-medium text-gray-700">{t('wh.sku')}</label>
+                    <button type="button"
+                      onClick={() => {
+                        const next = !skuManual
+                        setSkuManual(next)
+                        // Re-generate when switching back to auto
+                        if (!next && !editingProduct && category) {
+                          setSku(generateSKU(category, vendorName, productsRef.current.map(p => p.sku)))
+                        }
+                      }}
+                      title={skuManual
+                        ? (lang === 'az' ? 'Avtomatik rejimə qayıt' : 'Switch back to auto-generate')
+                        : (lang === 'az' ? 'SKU-nu əl ilə dəyiş'   : 'Override SKU manually')}
+                      className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors ${
+                        skuManual
+                          ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                          : 'text-gray-400 hover:text-yellow-600 hover:bg-yellow-50'
+                      }`}>
+                      {/* Pencil icon */}
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                      {skuManual
+                        ? (lang === 'az' ? 'Əl ilə' : 'Manual')
+                        : (lang === 'az' ? 'Avtomatik' : 'Auto')}
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('wh.productName')}</label>
-                    <input type="text" required value={name} onChange={e => setName(e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+
+                  {/* Input + tooltip wrapper */}
+                  <div className="relative group">
+                    <input
+                      type="text" required
+                      value={sku}
+                      onChange={e => {
+                        const val = e.target.value.toUpperCase()
+                        setSku(val)
+                        if (!skuManual) setSkuManual(true)
+                      }}
+                      readOnly={!skuManual && !editingProduct}
+                      placeholder="ELEC-BAK-2605-0001-4"
+                      className={`w-full border rounded-lg px-3 py-2.5 text-sm font-mono pr-8 focus:outline-none focus:ring-2 transition ${skuBorder()} ${
+                        !skuManual && !editingProduct ? 'cursor-default select-none' : ''
+                      }`}
+                    />
+
+                    {/* Status icon */}
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm select-none pointer-events-none">
+                      {skuState === 'valid'                             && <span className="text-green-500">✓</span>}
+                      {(skuState === 'invalid' || skuState === 'duplicate') && <span className="text-red-500">✗</span>}
+                      {skuState === 'legacy'                            && <span className="text-yellow-500 text-xs font-bold">!</span>}
+                    </span>
+
+                    {/* Breakdown tooltip (only when SKU is valid new-format) */}
+                    {parsedSKU && (
+                      <div className="absolute bottom-full left-0 mb-2 hidden group-hover:block z-20 pointer-events-none">
+                        <div className="bg-gray-900 text-white rounded-xl px-4 py-3 shadow-2xl whitespace-nowrap">
+                          {/* Values row */}
+                          <div className="flex items-end gap-2 font-mono text-xs mb-1">
+                            {[
+                              { v: parsedSKU.category, l: lang === 'az' ? 'Kat' : 'Cat'  },
+                              { v: '-',                l: ''                              },
+                              { v: parsedSKU.supplier, l: lang === 'az' ? 'Sat' : 'Sup'  },
+                              { v: '-',                l: ''                              },
+                              { v: parsedSKU.date,     l: lang === 'az' ? 'Tar' : 'Date' },
+                              { v: '-',                l: ''                              },
+                              { v: parsedSKU.sequence, l: lang === 'az' ? 'Sır' : 'Seq'  },
+                              { v: '-',                l: ''                              },
+                              { v: parsedSKU.check,    l: lang === 'az' ? 'Çex' : 'Chk'  },
+                            ].map((part, i) => (
+                              <div key={i} className="flex flex-col items-center">
+                                <span className={part.l ? 'text-yellow-300' : 'text-gray-500'}>
+                                  {part.v}
+                                </span>
+                                {part.l && (
+                                  <span className="text-gray-400 text-[9px] mt-0.5">{part.l}</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Caret */}
+                        <div className="ml-4 w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900" />
+                      </div>
+                    )}
                   </div>
+
+                  {/* Helper text */}
+                  {skuState === 'invalid' && (
+                    <p className="text-xs text-red-500 mt-1">
+                      {lang === 'az' ? 'Format: KAT-SAT-AYYY-SSSS-C (məs. ELEC-BAK-2605-0001-4)' : 'Format: CAT-SUP-YYMM-SEQ#-CHECK (e.g. ELEC-BAK-2605-0001-4)'}
+                    </p>
+                  )}
+                  {skuState === 'duplicate' && (
+                    <p className="text-xs text-red-500 mt-1">
+                      {lang === 'az' ? 'Bu SKU artıq mövcuddur' : 'SKU already in use'}
+                    </p>
+                  )}
+                  {skuState === 'legacy' && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      {lang === 'az' ? 'Köhnə format — saxlanmağa davam edər' : 'Legacy format — will still save'}
+                    </p>
+                  )}
                 </div>
-                {/* Category + Unit */}
+
+                {/* ── Name ─────────────────────────────────────────────────── */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('wh.productName')}</label>
+                  <input type="text" required value={name} onChange={e => setName(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                </div>
+
+                {/* ── Category + Supplier ───────────────────────────────────── */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('wh.category')}</label>
@@ -360,19 +516,33 @@ export default function ProductsClient() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('wh.unit')}</label>
-                    <div className="relative">
-                      <select value={unit} onChange={e => setUnit(e.target.value as ProductUnit)}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition pr-8">
-                        {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                      </select>
-                      <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      {lang === 'az' ? 'Satıcı (SKU üçün)' : 'Supplier (for SKU)'}
+                    </label>
+                    <input type="text" value={vendorName} onChange={e => setVendorName(e.target.value)}
+                      placeholder={lang === 'az' ? 'məs. Bakı Elektronika' : 'e.g. Baku Electronics'}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      {lang === 'az' ? 'SKU-da ilk 3 hərf istifadə olunur' : 'First 3 chars used in SKU'}
+                    </p>
                   </div>
                 </div>
-                {/* Cost + Sale price */}
+
+                {/* ── Unit ─────────────────────────────────────────────────── */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('wh.unit')}</label>
+                  <div className="relative">
+                    <select value={unit} onChange={e => setUnit(e.target.value as ProductUnit)}
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition pr-8">
+                      {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
+
+                {/* ── Cost + Sale price ─────────────────────────────────────── */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('wh.costPrice')}</label>
@@ -393,7 +563,8 @@ export default function ProductsClient() {
                     </div>
                   </div>
                 </div>
-                {/* Opening stock + Min level */}
+
+                {/* ── Stock + Min level ─────────────────────────────────────── */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -410,13 +581,15 @@ export default function ProductsClient() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
                   </div>
                 </div>
-                {/* Description */}
+
+                {/* ── Description ───────────────────────────────────────────── */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('wh.description')}</label>
                   <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-none" />
                 </div>
-                {/* Status */}
+
+                {/* ── Status ────────────────────────────────────────────────── */}
                 <div className="flex gap-3">
                   {(['active','inactive'] as ProductStatus[]).map(s => (
                     <button key={s} type="button" onClick={() => setStatus(s)}
@@ -430,17 +603,19 @@ export default function ProductsClient() {
                   ))}
                 </div>
               </div>
+
               {saveError && (
                 <div className="mx-6 mb-3 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-medium">
                   {saveError}
                 </div>
               )}
+
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
                 <button type="button" onClick={() => { setShowModal(false); resetForm() }}
                   className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors">
                   {t('common.cancel')}
                 </button>
-                <button type="submit" disabled={saving}
+                <button type="submit" disabled={saving || skuState === 'duplicate'}
                   className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors shadow-sm disabled:opacity-60">
                   {saving ? t('common.saving') : t('common.save')}
                 </button>
@@ -450,7 +625,7 @@ export default function ProductsClient() {
         </div>
       )}
 
-      {/* Stock Adjustment Modal */}
+      {/* ── Stock Adjustment Modal ─────────────────────────────────────────── */}
       {showAdjModal && adjProduct && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4"
           onClick={e => { if (e.target === e.currentTarget) setShowAdjModal(false) }}>
@@ -486,9 +661,7 @@ export default function ProductsClient() {
                     placeholder={lang === 'az' ? 'məs. İnventar sayımı, zay mal…' : 'e.g. Physical count, damaged goods…'}
                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition resize-none" />
                 </div>
-                {adjError && (
-                  <p className="text-xs text-red-600 font-medium">{adjError}</p>
-                )}
+                {adjError && <p className="text-xs text-red-600 font-medium">{adjError}</p>}
               </div>
               <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-xl">
                 <button type="button" onClick={() => setShowAdjModal(false)}

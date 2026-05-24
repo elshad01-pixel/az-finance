@@ -701,6 +701,11 @@ const en = {
   'del.deliveryConfirmed':  'Delivery confirmed',
   'del.cogs':               'COGS',
   'del.selectSO':           'Select Sales Order…',
+  'del.cancelDelivery':          'Cancel Delivery',
+  'del.cancelDeliveryMsg':       'This reverses stock movements and sets the invoice to Draft. Continue?',
+  'del.statusCancelled':         'Cancelled',
+  'del.deliveryCancelled':       'Delivery cancelled',
+  'so.cancelBlockedByDelivery':  'Cancel the delivery {del} first to reverse stock movements.',
 
   // ── Margin Report ────────────────────────────────────────────────────────
   'mar.tabLabel':           'Margin Report',
@@ -1423,6 +1428,11 @@ const az: Record<keyof typeof en, string> = {
   'del.deliveryConfirmed':  'Çatdırılma təsdiqləndi',
   'del.cogs':               'Maya Dəyəri',
   'del.selectSO':           'Satış Sifarişi seçin…',
+  'del.cancelDelivery':          'Çatdırılmanı Ləğv Et',
+  'del.cancelDeliveryMsg':       'Stok hərəkətləri geri alınacaq, faktura Qaralama kimi qeyd ediləcək. Davam edilsin?',
+  'del.statusCancelled':         'Ləğv edilib',
+  'del.deliveryCancelled':       'Çatdırılma ləğv edildi',
+  'so.cancelBlockedByDelivery':  'Stok hərəkətlərini geri almaq üçün əvvəlcə {del} çatdırılmasını ləğv edin.',
 
   // ── Margin Report ────────────────────────────────────────────────────────
   'mar.tabLabel':           'Marja Hesabatı',

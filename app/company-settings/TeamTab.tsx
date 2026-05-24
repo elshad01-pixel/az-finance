@@ -143,7 +143,8 @@ export default function TeamTab() {
   }
 
   function copyLink(token: string) {
-    const url = `${window.location.origin}/signup?invite=${token}`
+    const base = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+    const url = `${base}/signup?invite=${token}`
     navigator.clipboard.writeText(url)
     setCopiedToken(token)
     setTimeout(() => setCopiedToken(null), 2500)
