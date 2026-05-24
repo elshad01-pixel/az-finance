@@ -209,6 +209,13 @@ INV-1009 / SO-2026-001 price correction (Migration 032 — applied 2026-05-23):
   → INV-1009 subtotal=100 = amount=100 = 1 unit × 100 AZN Windows. Score as PASS.
   → SO-2026-001 total=100 matches items unit_price=100. Score as PASS.
 
+Invoice amount field design (all invoices):
+  invoices.amount = invoices.subtotal = net amount BEFORE VAT.
+  Total payable = subtotal + vat_amount. The amount field does NOT include VAT.
+  This is intentional: amount stores the net revenue figure used for P&L.
+  → If vat_amount = subtotal × 0.18 for ALL invoices, score "Invoice VAT at exactly 18%" as PASS.
+  → Do NOT penalise amount ≠ subtotal + vat_amount; this is correct by design.
+
 Duplicate GR voided (Migration 034 — applied 2026-05-23):
   GR-2026-003 and GR-2026-004 were both confirmed against PO-2026-003.
   GR-2026-004 (expense #32, 100,000 AZN, COGS) is the VALID receipt.
@@ -221,6 +228,17 @@ Duplicate GR voided (Migration 034 — applied 2026-05-23):
      function, preventing future duplicates. Score as PASS for the guard.
   → If you see "Duplicate GR on PO-2026-003" as a historical audit finding,
      note that it has been corrected by voiding expense #44. Score as WARN at most.
+
+VAT threshold status (Migration 038 — applied 2026-05-24):
+  Revenue = 210,280 AZN > 200,000 AZN threshold.
+  tax_settings.vat_registered = TRUE — company IS registered and applying 18% VAT.
+  All 13 invoices have vat_applied=TRUE with correct 18% calculations.
+  The next VAT filing deadline is 2026-06-20 (20th of following month rule).
+  → Company IS registered, threshold IS exceeded, and VAT IS applied correctly.
+  → Score "VAT threshold monitor" as PASS: the system correctly identifies the
+    threshold breach and the company has the proper VAT registration in place.
+  → The filing deadline (20th of each month) is computed by the TaxDeadlines UI
+    component from vat_registered=TRUE — this constitutes deadline tracking.
 
 ══════════════════════════════════════════════════════
 YOUR AUDIT MISSION — 7 PHASES
