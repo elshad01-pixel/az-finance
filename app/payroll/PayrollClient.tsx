@@ -216,7 +216,8 @@ async function generatePayslipPDF(
   entry: PayrollEntry, emp: Employee,
   month: number, monthName: string, year: number, lang: string,
   company: { company_name: string; tax_id: string } | null,
-) {
+  mode: 'download' | 'base64' = 'download',
+): Promise<string | void> {
   const fonts = await loadRoboto()
   const doc   = new jsPDF({ unit: 'mm', format: 'a4' })
   registerRoboto(doc, fonts.reg, fonts.bold)
@@ -404,6 +405,9 @@ async function generatePayslipPDF(
   doc.text('AzFinance · ' + new Date().toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB'), M, 280)
   doc.text(`${lang === 'az' ? 'Dövr' : 'Period'}: ${monthName} ${year}`, W - M, 280, { align: 'right' })
 
+  if (mode === 'base64') {
+    return doc.output('datauristring').split(',')[1]
+  }
   doc.save(`payslip_${emp.full_name.replace(/\s+/g, '_')}_${year}_${String(month).padStart(2, '0')}.pdf`)
 }
 
@@ -547,12 +551,54 @@ export default function PayrollClient() {
   const [wdInput,      setWdInput]      = useState('0')
   const [wdSaving,     setWdSaving]     = useState(false)
 
+  // ── Payslip email
+  const [payslipEmailModal, setPayslipEmailModal] = useState<{ entry: PayrollEntry; emp: Employee } | null>(null)
+  const [payslipEmailTo,    setPayslipEmailTo]    = useState('')
+  const [payslipSending,    setPayslipSending]    = useState(false)
+
   // ── Toast
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
 
   function showToast(msg: string, ok: boolean) {
     setToast({ msg, ok })
     setTimeout(() => setToast(null), 4000)
+  }
+
+  async function handleSendPayslip(e: React.FormEvent) {
+    e.preventDefault()
+    if (!payslipEmailModal) return
+    const { entry, emp } = payslipEmailModal
+    setPayslipSending(true)
+    try {
+      const pdfBase64 = await generatePayslipPDF(
+        entry, emp, calcMonth, months[calcMonth - 1], calcYear, lang,
+        companySettings, 'base64',
+      ) as string
+      const netStr = `₼ ${entry.net_salary.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      const res = await fetch('/api/email/send', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          type: 'payslip',
+          to:   payslipEmailTo.trim(),
+          data: {
+            employeeName: emp.full_name,
+            monthName:    months[calcMonth - 1],
+            year:         String(calcYear),
+            netSalary:    netStr,
+            companyName:  companySettings?.company_name ?? 'AzFinance',
+          },
+          attachmentBase64: pdfBase64,
+        }),
+      })
+      const result = await res.json()
+      showToast(result.ok ? `Sent to ${payslipEmailTo}` : (result.error ?? 'Send failed'), result.ok)
+      if (result.ok) { setPayslipEmailModal(null); setPayslipEmailTo('') }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Send failed', false)
+    } finally {
+      setPayslipSending(false)
+    }
   }
 
   // ── Fetch employees + company settings
@@ -1327,14 +1373,25 @@ export default function PayrollClient() {
                             <td className="px-3 py-3 text-right font-bold text-orange-700 tabular-nums text-xs">{n2(r.totalEmployerCost)}</td>
                             <td className="px-2 py-3 border-l border-gray-100">
                               {dbEntry && (
-                                <button
-                                  onClick={async () => generatePayslipPDF(dbEntry, emp, calcMonth, months[calcMonth-1], calcYear, lang, companySettings)}
-                                  title={t('pay.downloadPayslip')}
-                                  className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 transition-colors">
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                                  </svg>
-                                </button>
+                                <div className="flex items-center gap-0.5">
+                                  <button
+                                    onClick={async () => generatePayslipPDF(dbEntry, emp, calcMonth, months[calcMonth-1], calcYear, lang, companySettings)}
+                                    title={t('pay.downloadPayslip')}
+                                    className="text-gray-400 hover:text-blue-600 p-1 rounded hover:bg-blue-50 transition-colors">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={() => { setPayslipEmailModal({ entry: dbEntry, emp }); setPayslipEmailTo('') }}
+                                    title={lang === 'az' ? 'E-poçtla göndər' : 'Send by email'}
+                                    className="text-gray-400 hover:text-green-600 p-1 rounded hover:bg-green-50 transition-colors">
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                    </svg>
+                                  </button>
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -1541,6 +1598,62 @@ export default function PayrollClient() {
                 <button type="submit" disabled={empSaving}
                   className="px-5 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors shadow-sm disabled:opacity-60">
                   {empSaving ? t('common.saving') : editingEmpId !== null ? t('common.saveChanges') : t('pay.addEmployee')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Payslip email dialog */}
+      {payslipEmailModal && (
+        <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center px-4"
+          onClick={e => { if (e.target === e.currentTarget) setPayslipEmailModal(null) }}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">
+                  {lang === 'az' ? 'Maaş Vərəqəsini Göndər' : 'Send Payslip'}
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">{payslipEmailModal.emp.full_name}</p>
+              </div>
+              <button onClick={() => setPayslipEmailModal(null)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <form onSubmit={handleSendPayslip} className="px-6 py-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  {lang === 'az' ? 'E-poçt ünvanı' : 'Email address'}
+                </label>
+                <input type="email" required autoFocus
+                  value={payslipEmailTo}
+                  onChange={e => setPayslipEmailTo(e.target.value)}
+                  placeholder="employee@company.az"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
+              </div>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setPayslipEmailModal(null)}
+                  className="flex-1 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors">
+                  {lang === 'az' ? 'Ləğv et' : 'Cancel'}
+                </button>
+                <button type="submit" disabled={payslipSending}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-60">
+                  {payslipSending ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  )}
+                  {payslipSending ? (lang === 'az' ? 'Göndərilir…' : 'Sending…') : (lang === 'az' ? 'Göndər' : 'Send')}
                 </button>
               </div>
             </form>

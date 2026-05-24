@@ -142,7 +142,8 @@ export default function InvoicesClient() {
   const [vatEnabled, setVatEnabled]       = useState(false)
 
   // ── PDF download ──────────────────────────────────────────────────────
-  const [downloadingId, setDownloadingId] = useState<number | null>(null)
+  const [downloadingId,  setDownloadingId]  = useState<number | null>(null)
+  const [sendingEmailId, setSendingEmailId] = useState<number | null>(null)
 
   // ── Toast ─────────────────────────────────────────────────────────────
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
@@ -307,6 +308,81 @@ export default function InvoicesClient() {
       )
     } finally {
       setDownloadingId(null)
+    }
+  }
+
+  async function handleSendEmail(inv: Invoice) {
+    setMenu(null)
+    const recipientEmail = inv.client_email ?? clients.find(c => c.id === inv.client_id || c.company === inv.client)?.email ?? ''
+    if (!recipientEmail) {
+      showToast('No email address on file for this client.', false)
+      return
+    }
+    setSendingEmailId(inv.id)
+    try {
+      const [companyRes, taxRes] = await Promise.all([
+        supabase.from('company_settings')
+          .select('company_name, company_address, city, tax_id, phone, email, bank_name, bank_account, swift_code')
+          .maybeSingle(),
+        supabase.from('tax_settings').select('vat_registered').maybeSingle(),
+      ])
+      const cs = companyRes.data
+      const company = {
+        company_name:    cs?.company_name    ?? '',
+        company_address: cs?.company_address ?? '',
+        city:            cs?.city            ?? '',
+        tax_id:          cs?.tax_id          ?? '',
+        phone:           cs?.phone           ?? '',
+        email:           cs?.email           ?? '',
+        bank_name:       cs?.bank_name       ?? '',
+        bank_account:    cs?.bank_account    ?? '',
+        swift_code:      cs?.swift_code      ?? '',
+        vat_registered:  taxRes.data?.vat_registered ?? false,
+      }
+      const { generateInvoicePDF } = await import('@/lib/generateInvoicePDF')
+      const pdfBase64 = await generateInvoicePDF(
+        {
+          number:        inv.number,
+          date:          inv.date,
+          due_date:      inv.due_date,
+          status:        inv.status,
+          client:        inv.client,
+          clientAddress: inv.client_address ?? '',
+          clientEmail:   recipientEmail,
+          line_items:    inv.line_items ?? [],
+          amount:        inv.amount,
+          vat_applied:   inv.vat_applied ?? false,
+        },
+        company,
+        'base64',
+      ) as string
+
+      const subtotal   = (inv.line_items ?? []).reduce((s, i) => s + i.quantity * i.unit_price, inv.amount)
+      const grandTotal = (inv.vat_applied && company.vat_registered) ? subtotal * 1.18 : subtotal
+      const amountStr  = `₼ ${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+      const res = await fetch('/api/email/send', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          type: 'invoice',
+          to:   recipientEmail,
+          data: {
+            invoiceNumber: inv.number,
+            clientName:    inv.client,
+            amount:        amountStr,
+            dueDate:       new Date(inv.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+            companyName:   company.company_name || 'AzFinance',
+          },
+          attachmentBase64: pdfBase64,
+        }),
+      })
+      const result = await res.json()
+      showToast(result.ok ? `Sent to ${recipientEmail}` : (result.error ?? 'Send failed'), result.ok)
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Send failed', false)
+    } finally {
+      setSendingEmailId(null)
     }
   }
 
@@ -962,6 +1038,20 @@ export default function InvoicesClient() {
                         </svg>
                         {t('inv.downloadPDF')}
                       </MenuItem>
+                      <MenuItem onClick={() => handleSendEmail(inv)} variant="primary">
+                        {sendingEmailId === inv.id ? (
+                          <svg className="w-4 h-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                        {sendingEmailId === inv.id ? 'Sending…' : t('inv.sendEmail' as never) || 'Send Email'}
+                      </MenuItem>
                       <div className="my-1 border-t border-gray-100" />
                       <MenuItem onClick={() => handleDelete(inv)} variant="danger">
                         <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -980,6 +1070,20 @@ export default function InvoicesClient() {
                             d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                         </svg>
                         {t('inv.downloadPDF')}
+                      </MenuItem>
+                      <MenuItem onClick={() => handleSendEmail(inv)} variant="primary">
+                        {sendingEmailId === inv.id ? (
+                          <svg className="w-4 h-4 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                        )}
+                        {sendingEmailId === inv.id ? 'Sending…' : t('inv.sendEmail' as never) || 'Send Email'}
                       </MenuItem>
                       <MenuItem onClick={() => { setMenu(null); setSelectedInvoice(inv) }}>
                         <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

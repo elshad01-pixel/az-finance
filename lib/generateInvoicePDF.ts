@@ -76,7 +76,11 @@ function labeledLine(
 
 // ── Main export ────────────────────────────────────────────────────────────
 
-export async function generateInvoicePDF(invoice: InvoiceForPDF, company: CompanyForPDF): Promise<void> {
+export async function generateInvoicePDF(
+  invoice: InvoiceForPDF,
+  company: CompanyForPDF,
+  mode: 'download' | 'base64' = 'download',
+): Promise<string | void> {
   const doc    = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
   const W      = 210
   const H      = 297
@@ -376,5 +380,8 @@ export async function generateInvoicePDF(invoice: InvoiceForPDF, company: Compan
     { align: 'center' },
   )
 
+  if (mode === 'base64') {
+    return doc.output('datauristring').split(',')[1]
+  }
   doc.save(`${invoice.number}.pdf`)
 }

@@ -51,6 +51,8 @@ export default function TeamTab() {
   const [inviteSuccess, setInviteSuccess] = useState('')
   const [copiedToken,   setCopiedToken]   = useState<string | null>(null)
   const [removing,      setRemoving]      = useState<number | null>(null)
+  const [sendingInvite, setSendingInvite] = useState<number | null>(null)
+  const [inviteToast,   setInviteToast]   = useState<{ msg: string; ok: boolean } | null>(null)
 
   async function loadTeam() {
     if (!company) { setLoading(false); return }
@@ -150,6 +152,42 @@ export default function TeamTab() {
     setTimeout(() => setCopiedToken(null), 2500)
   }
 
+  function showInviteToast(msg: string, ok: boolean) {
+    setInviteToast({ msg, ok })
+    setTimeout(() => setInviteToast(null), 4000)
+  }
+
+  async function handleSendInviteEmail(inv: PendingInvite) {
+    setSendingInvite(inv.id)
+    try {
+      const base     = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin
+      const inviteUrl = `${base}/signup?invite=${inv.token}`
+      const { data: { user } } = await supabase.auth.getUser()
+      const inviterName = user?.email ?? 'AzFinance Admin'
+      const companyName = company?.name ?? 'AzFinance'
+      const res = await fetch('/api/email/send', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          type: 'invite',
+          to:   inv.invited_email,
+          data: { inviteUrl, inviterName, companyName, role: inv.role },
+        }),
+      })
+      const result = await res.json()
+      showInviteToast(
+        result.ok
+          ? (lang === 'az' ? `Dəvət göndərildi: ${inv.invited_email}` : `Invite sent to ${inv.invited_email}`)
+          : (result.error ?? 'Send failed'),
+        result.ok,
+      )
+    } catch (err) {
+      showInviteToast(err instanceof Error ? err.message : 'Send failed', false)
+    } finally {
+      setSendingInvite(null)
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -179,6 +217,19 @@ export default function TeamTab() {
 
   return (
     <div className="space-y-5">
+
+      {/* ── Invite email toast ────────────────────────────────────── */}
+      {inviteToast && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium ${
+          inviteToast.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          {inviteToast.ok
+            ? <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            : <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01" /></svg>
+          }
+          {inviteToast.msg}
+        </div>
+      )}
 
       {/* ── Active members ────────────────────────────────────────── */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
@@ -331,6 +382,25 @@ export default function TeamTab() {
                     {copiedToken === inv.token
                       ? (lang === 'az' ? '✓ Kopyalandı' : '✓ Copied!')
                       : (lang === 'az' ? 'Linki Kopyala' : 'Copy Link')}
+                  </button>
+                  <button
+                    onClick={() => handleSendInviteEmail(inv)}
+                    disabled={sendingInvite === inv.id}
+                    title={lang === 'az' ? 'E-poçtla göndər' : 'Send invite by email'}
+                    className="text-xs font-semibold text-green-700 hover:text-green-800 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-50 transition-colors whitespace-nowrap disabled:opacity-60 flex items-center gap-1"
+                  >
+                    {sendingInvite === inv.id ? (
+                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                      </svg>
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    )}
+                    {lang === 'az' ? 'E-poçt' : 'Email'}
                   </button>
                   <button
                     onClick={() => cancelInvitation(inv.id)}

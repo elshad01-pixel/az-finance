@@ -42,6 +42,8 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
   const [clientAddress, setClientAddress]   = useState('')
   const [clientEmail, setClientEmail]       = useState('')
   const [downloading, setDownloading]       = useState(false)
+  const [sending,     setSending]           = useState(false)
+  const [sendToast,   setSendToast]         = useState<{ msg: string; ok: boolean } | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -85,6 +87,65 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
   const subtotal   = items.reduce((s, i) => s + i.quantity * i.unit_price, 0)
   const vatAmount  = company?.vat_registered ? subtotal * 0.18 : 0
   const grandTotal = subtotal + vatAmount
+
+  function showSendToast(msg: string, ok: boolean) {
+    setSendToast({ msg, ok })
+    setTimeout(() => setSendToast(null), 4000)
+  }
+
+  async function handleSendEmail() {
+    if (!company || !clientEmail) {
+      showSendToast('No client email address on file.', false)
+      return
+    }
+    setSending(true)
+    try {
+      const { generateInvoicePDF } = await import('@/lib/generateInvoicePDF')
+      const pdfBase64 = await generateInvoicePDF(
+        {
+          number:        invoice.number,
+          date:          invoice.date,
+          due_date:      invoice.due_date,
+          status:        invoice.status,
+          client:        invoice.client,
+          clientAddress,
+          clientEmail,
+          line_items:    items,
+          amount:        invoice.amount,
+        },
+        company,
+        'base64',
+      ) as string
+
+      const grandTotal = company.vat_registered
+        ? subtotal + subtotal * 0.18
+        : subtotal
+      const amountStr = `₼ ${grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+      const res = await fetch('/api/email/send', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          type: 'invoice',
+          to:   clientEmail,
+          data: {
+            invoiceNumber: invoice.number,
+            clientName:    invoice.client,
+            amount:        amountStr,
+            dueDate:       new Date(invoice.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+            companyName:   company.company_name || 'AzFinance',
+          },
+          attachmentBase64: pdfBase64,
+        }),
+      })
+      const result = await res.json()
+      showSendToast(result.ok ? `Sent to ${clientEmail}` : (result.error ?? 'Send failed'), result.ok)
+    } catch (err) {
+      showSendToast(err instanceof Error ? err.message : 'Send failed', false)
+    } finally {
+      setSending(false)
+    }
+  }
 
   async function handleDownload() {
     if (!company) return
@@ -292,6 +353,15 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
           </div>
         </div>
 
+        {/* ── Send toast ── */}
+        {sendToast && (
+          <div className={`mx-6 mb-1 px-4 py-2.5 rounded-lg text-sm font-medium ${
+            sendToast.ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'
+          }`}>
+            {sendToast.msg}
+          </div>
+        )}
+
         {/* ── Modal footer ── */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl">
           <button
@@ -300,6 +370,26 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
           >
             Close
           </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSendEmail}
+              disabled={sending || !company || !clientEmail}
+              title={!clientEmail ? 'No client email on file' : `Send to ${clientEmail}`}
+              className="flex items-center gap-2 bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 border border-gray-200 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+            >
+              {sending ? (
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              )}
+              {sending ? 'Sending…' : 'Send Email'}
+            </button>
           <button
             onClick={handleDownload}
             disabled={downloading || !company}
@@ -323,6 +413,7 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
               </>
             )}
           </button>
+          </div>
         </div>
 
       </div>
