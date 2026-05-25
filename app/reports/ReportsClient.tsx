@@ -255,8 +255,9 @@ export default function ReportsClient() {
   const [companyName, setCompanyName] = useState('')
   const [deliveries,  setDeliveries]  = useState<Delivery[]>([])
   const [products,    setProducts]    = useState<ProductInfo[]>([])
-  const [loading,     setLoading]     = useState(true)
-  const [exporting,   setExporting]   = useState(false)
+  const [loading,          setLoading]          = useState(true)
+  const [exporting,        setExporting]        = useState(false)
+  const [exportingMargin,  setExportingMargin]  = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -451,6 +452,34 @@ export default function ReportsClient() {
     }
   }
 
+  async function handleExportMargin() {
+    setExportingMargin(true)
+    try {
+      const { generateMarginPDF } = await import('@/lib/generateMarginPDF')
+      await generateMarginPDF({
+        period: pLabel,
+        companyName,
+        totals: {
+          revenue:     totalMarginRevenue,
+          cogs:        totalMarginCogs,
+          grossMargin: totalGrossMargin,
+          marginPct:   totalGrossMarginPct,
+        },
+        rows: marginRows.map(r => ({
+          name:         r.name,
+          sku:          r.sku,
+          qty_sold:     r.qty_sold,
+          revenue:      r.revenue,
+          cogs:         r.cogs,
+          gross_profit: r.gross_profit,
+          margin_pct:   r.margin_pct,
+        })),
+      })
+    } finally {
+      setExportingMargin(false)
+    }
+  }
+
   // ── Loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -506,6 +535,31 @@ export default function ReportsClient() {
             className="flex items-center gap-2 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-60 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-sm"
           >
             {exporting ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                {t('rep.exporting')}
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                {t('rep.exportPDF')}
+              </>
+            )}
+          </button>
+        )}
+        {activeTab === 'margin' && (
+          <button
+            onClick={handleExportMargin}
+            disabled={exportingMargin}
+            className="flex items-center gap-2 bg-blue-700 hover:bg-blue-800 active:bg-blue-900 disabled:opacity-60 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors shadow-sm"
+          >
+            {exportingMargin ? (
               <>
                 <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
