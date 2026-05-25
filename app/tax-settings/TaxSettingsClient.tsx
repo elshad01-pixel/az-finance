@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import VatThresholdMonitor from '@/app/ui/VatThresholdMonitor'
+import { useLanguage } from '@/lib/LanguageContext'
 
 type TaxRegime    = 'simplified' | 'profit_tax' | 'income_tax'
 type BusinessType = 'general' | 'trade_food'
@@ -43,6 +44,7 @@ const REGIME_OPTIONS: { value: TaxRegime; label: string; desc: string }[] = [
 ]
 
 export default function TaxSettingsClient() {
+  const { lang } = useLanguage()
   const [settings,           setSettings]           = useState<TaxSettings>(DEFAULTS)
   const [loading,            setLoading]            = useState(true)
   const [saving,             setSaving]             = useState(false)
@@ -176,10 +178,11 @@ export default function TaxSettingsClient() {
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h3 className="text-sm font-semibold text-gray-900">VAT Registration</h3>
+              <h3 className="text-sm font-semibold text-gray-900">{lang === 'az' ? 'ƏDV Qeydiyyatı' : 'VAT Registration'}</h3>
               <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
-                18% VAT. Mandatory when annual revenue exceeds ₼200,000 or any single
-                transaction exceeds ₼200,000. Dividend withholding tax is 5%.
+                {lang === 'az'
+                  ? '18% ƏDV. İllik gəlir ₼200,000 həddi keçdikdə və ya hər hansı bir əməliyyat ₼200,000 aşdıqda məcburidir. Dividend tutma vergisi 5%.'
+                  : '18% VAT. Mandatory when annual revenue exceeds ₼200,000 or any single transaction exceeds ₼200,000. Dividend withholding tax is 5%.'}
               </p>
             </div>
             <button
@@ -196,7 +199,7 @@ export default function TaxSettingsClient() {
           </div>
           {settings.vat_registered && (
             <div className="mt-3 bg-blue-50 text-blue-700 text-xs px-3 py-2 rounded-lg">
-              VAT returns due on the 20th of each following month.
+              {lang === 'az' ? 'ƏDV hesabatı növbəti ayın 20-nə qədər verilməlidir.' : 'VAT returns due on the 20th of each following month.'}
             </div>
           )}
         </div>

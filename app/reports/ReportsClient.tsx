@@ -162,7 +162,7 @@ function periodLabel(period: Period, from: string, to: string, lang: string, all
   }
   if (period === 'year') return `${from.slice(0, 4)}`
   const fmtDate = (s: string) =>
-    new Date(s + 'T12:00:00').toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })
+    new Intl.DateTimeFormat('az-AZ').format(new Date(s + 'T12:00:00'))
   return `${fmtDate(from)} – ${fmtDate(to)}`
 }
 
@@ -656,7 +656,7 @@ export default function ReportsClient() {
             {/* Card footer */}
             <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
               <span>{t('rep.generatedBy')}</span>
-              <span>{new Date().toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              <span>{new Intl.DateTimeFormat('az-AZ').format(new Date())}</span>
             </div>
           </div>
         </>

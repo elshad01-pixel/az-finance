@@ -10,12 +10,17 @@
     "test:agent:verbose": "tsx scripts/test-agent.ts --verbose",
     "test:agent:payroll": "tsx scripts/test-agent.ts --module payroll",
     "test:agent:keep": "tsx scripts/test-agent.ts --no-cleanup",
-    "test:agent:legacy": "tsx scripts/aytac-test-agent.ts"
+    "test:agent:legacy": "tsx scripts/aytac-test-agent.ts",
+    "test:ux": "tsx scripts/leyla-agent.ts",
+    "test:ux:verbose": "tsx scripts/leyla-agent.ts --verbose",
+    "test:ux:module": "tsx scripts/leyla-agent.ts --module",
+    "test:full": "tsx scripts/test-agent.ts && tsx scripts/leyla-agent.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.3",
+    "@tabler/icons-webfont": "^3.44.0",
     "dotenv": "^17.4.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",

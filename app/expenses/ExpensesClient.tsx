@@ -175,10 +175,7 @@ export default function ExpensesClient() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   function formatDate(d: string) {
-    return new Date(d + 'T12:00:00').toLocaleDateString(
-      lang === 'az' ? 'az-AZ' : 'en-GB',
-      { day: '2-digit', month: 'short', year: 'numeric' },
-    )
+    return new Intl.DateTimeFormat('az-AZ').format(new Date(d + 'T12:00:00'))
   }
 
   function daysUntil(dateStr: string): number {

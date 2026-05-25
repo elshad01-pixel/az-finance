@@ -32,7 +32,7 @@ function fmt(n: number) {
 }
 
 function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Intl.DateTimeFormat('az-AZ').format(new Date(d))
 }
 
 export default function InvoiceDetailModal({ invoice, onClose }: Props) {
@@ -132,7 +132,7 @@ export default function InvoiceDetailModal({ invoice, onClose }: Props) {
             invoiceNumber: invoice.number,
             clientName:    invoice.client,
             amount:        amountStr,
-            dueDate:       new Date(invoice.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+            dueDate:       new Intl.DateTimeFormat('az-AZ').format(new Date(invoice.due_date)),
             companyName:   company.company_name || 'AzFinance',
           },
           attachmentBase64: pdfBase64,

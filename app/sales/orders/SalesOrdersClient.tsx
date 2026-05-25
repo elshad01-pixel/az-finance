@@ -295,7 +295,7 @@ export default function SalesOrdersClient() {
                   <td className="px-4 py-3 font-mono text-xs text-gray-700 whitespace-nowrap">{o.so_number}</td>
                   <td className="px-4 py-3 text-sm text-gray-900">{o.clients?.company ?? '—'}</td>
                   <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">
-                    {new Date(o.created_at).toLocaleDateString('az-AZ', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    {new Intl.DateTimeFormat('az-AZ').format(new Date(o.created_at))}
                   </td>
                   <td className="px-4 py-3 text-sm font-semibold text-gray-900 tabular-nums whitespace-nowrap">{fmt(o.total_amount)}</td>
                   <td className="px-4 py-3">
@@ -424,11 +424,11 @@ export default function SalesOrdersClient() {
                                 className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <option value="">{t('proc.selectProduct')}</option>
                                 {products.map(p => (
-                                  <option key={p.id} value={p.id}>{p.sku} — {p.name} ({p.stock_qty} {p.unit})</option>
+                                  <option key={p.id} value={p.id}>{p.name} ({p.sku}) — {p.stock_qty} {p.unit} mövcud</option>
                                 ))}
                               </select>
                               {prod && (
-                                <p className={`text-xs mt-0.5 ${insuffic ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
+                                <p className={`text-xs mt-0.5 ${insuffic ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
                                   {insuffic
                                     ? `⚠ ${t('so.insufficientStock')}`
                                     : `${t('so.availableStock')}: ${avail} ${prod.unit}`}

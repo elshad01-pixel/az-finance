@@ -64,7 +64,7 @@ const FILTER_TABS: FilterTab[] = ['All', 'Paid', 'Unpaid', 'Draft']
 const EMPTY_LINE = (): LineItem => ({ id: Date.now() + Math.random(), description: '', quantity: '1', unitPrice: '' })
 
 function formatDate(d: string) {
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Intl.DateTimeFormat('az-AZ').format(new Date(d))
 }
 
 function fmt(n: number) {

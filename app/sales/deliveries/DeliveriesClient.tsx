@@ -52,7 +52,7 @@ const STATUS_STYLE: Record<DelStatus, string> = {
 }
 
 function fmtDate(s: string) {
-  return new Date(s + 'T12:00:00').toLocaleDateString('az-AZ', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Intl.DateTimeFormat('az-AZ').format(new Date(s + 'T12:00:00'))
 }
 
 export default function DeliveriesClient() {

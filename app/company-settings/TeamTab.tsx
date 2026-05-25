@@ -260,7 +260,7 @@ export default function TeamTab() {
                   </p>
                   <p className="text-xs text-gray-400">
                     {lang === 'az' ? 'Qoşulub' : 'Joined'}{' '}
-                    {new Date(m.created_at).toLocaleDateString()}
+                    {new Intl.DateTimeFormat('az-AZ').format(new Date(m.created_at))}
                   </p>
                 </div>
               </div>

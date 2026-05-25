@@ -48,11 +48,11 @@ export default function BillingPage() {
   const { subscription, currentPackage, isTrialActive, trialDaysLeft, loading } = useCompany()
 
   const trialEnd = subscription?.trial_ends_at
-    ? new Date(subscription.trial_ends_at).toLocaleDateString()
+    ? new Intl.DateTimeFormat('az-AZ').format(new Date(subscription.trial_ends_at))
     : null
 
   const paidUntil = subscription?.paid_until
-    ? new Date(subscription.paid_until).toLocaleDateString()
+    ? new Intl.DateTimeFormat('az-AZ').format(new Date(subscription.paid_until))
     : null
 
   return (

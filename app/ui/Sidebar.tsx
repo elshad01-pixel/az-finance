@@ -10,131 +10,44 @@ import UpgradePrompt from '@/app/ui/UpgradePrompt'
 import type { TranslationKey } from '@/lib/i18n'
 
 interface NavItem {
-  labelKey:  TranslationKey
-  href:      string
-  icon:      React.ReactNode
-  minRole?:  Role  // minimum role required; undefined = everyone
+  labelKey: TranslationKey
+  href:     string
+  icon:     string
+  minRole?: Role
 }
 
 const navItems: NavItem[] = [
-  {
-    labelKey: 'nav.dashboard',
-    href: '/',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.invoices',
-    href: '/invoices',
-    minRole: 'finance',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.expenses',
-    href: '/expenses',
-    minRole: 'finance',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.clients',
-    href: '/clients',
-    minRole: 'finance',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.vendors',
-    href: '/vendors',
-    minRole: 'finance',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.reports',
-    href: '/reports',
-    minRole: 'finance',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.taxSettings',
-    href: '/tax-settings',
-    minRole: 'manager',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.payroll',
-    href: '/payroll',
-    minRole: 'manager',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.companySettings',
-    href: '/company-settings',
-    minRole: 'manager',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.billing',
-    href: '/billing',
-    minRole: 'admin',
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-      </svg>
-    ),
-  },
+  { labelKey: 'nav.dashboard',       href: '/',                 icon: 'ti-layout-dashboard' },
+  { labelKey: 'nav.invoices',        href: '/invoices',         icon: 'ti-file-invoice',   minRole: 'finance' },
+  { labelKey: 'nav.expenses',        href: '/expenses',         icon: 'ti-receipt',        minRole: 'finance' },
+  { labelKey: 'nav.clients',         href: '/clients',          icon: 'ti-users',          minRole: 'finance' },
+  { labelKey: 'nav.vendors',         href: '/vendors',          icon: 'ti-building-store', minRole: 'finance' },
+  { labelKey: 'nav.reports',         href: '/reports',          icon: 'ti-chart-bar',      minRole: 'finance' },
+  { labelKey: 'nav.taxSettings',     href: '/tax-settings',     icon: 'ti-calculator',     minRole: 'manager' },
+  { labelKey: 'nav.payroll',         href: '/payroll',          icon: 'ti-cash',           minRole: 'manager' },
+  { labelKey: 'nav.companySettings', href: '/company-settings', icon: 'ti-settings',       minRole: 'manager' },
+  { labelKey: 'nav.billing',         href: '/billing',          icon: 'ti-credit-card',    minRole: 'admin'   },
 ]
 
-// Role hierarchy for visibility checks
-const ROLE_RANK: Record<Role, number> = {
-  employee: 0,
-  finance:  1,
-  manager:  2,
-  admin:    3,
-}
+const WH_ITEMS = [
+  { labelKey: 'nav.whProducts'   as TranslationKey, href: '/warehouse/products',  icon: 'ti-box' },
+  { labelKey: 'nav.whBatches'    as TranslationKey, href: '/warehouse/batches',   icon: 'ti-packages' },
+  { labelKey: 'nav.whMovements'  as TranslationKey, href: '/warehouse/movements', icon: 'ti-arrows-exchange' },
+  { labelKey: 'nav.whSettings'   as TranslationKey, href: '/warehouse/settings',  icon: 'ti-settings' },
+]
+
+const SALES_ITEMS = [
+  { labelKey: 'nav.salesOrders'     as TranslationKey, href: '/sales/orders',    icon: 'ti-shopping-cart' },
+  { labelKey: 'nav.salesDeliveries' as TranslationKey, href: '/sales/deliveries',icon: 'ti-truck-delivery' },
+]
+
+const PROC_ITEMS = [
+  { labelKey: 'nav.procRequests' as TranslationKey, href: '/procurement/requests', icon: 'ti-clipboard-list' },
+  { labelKey: 'nav.procOrders'   as TranslationKey, href: '/procurement/orders',   icon: 'ti-file-text' },
+  { labelKey: 'nav.procReceipts' as TranslationKey, href: '/procurement/receipts', icon: 'ti-package-import' },
+]
+
+const ROLE_RANK: Record<Role, number> = { employee: 0, finance: 1, manager: 2, admin: 3 }
 
 const ROLE_BADGE: Record<Role, { label: string; cls: string }> = {
   admin:    { label: 'Admin',    cls: 'bg-red-500/20 text-red-300 border border-red-500/30' },
@@ -143,120 +56,124 @@ const ROLE_BADGE: Record<Role, { label: string; cls: string }> = {
   employee: { label: 'Employee', cls: 'bg-gray-500/20 text-gray-300 border border-gray-500/30' },
 }
 
-const WH_ITEMS = [
-  {
-    labelKey: 'nav.whProducts' as TranslationKey,
-    href:     '/warehouse/products',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.whBatches' as TranslationKey,
-    href:     '/warehouse/batches',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.whMovements' as TranslationKey,
-    href:     '/warehouse/movements',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.whSettings' as TranslationKey,
-    href:     '/warehouse/settings',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-      </svg>
-    ),
-  },
-]
 
-const SALES_ITEMS = [
-  {
-    labelKey: 'nav.salesOrders' as TranslationKey,
-    href:     '/sales/orders',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.salesDeliveries' as TranslationKey,
-    href:     '/sales/deliveries',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-      </svg>
-    ),
-  },
-]
+// ── NavLink ───────────────────────────────────────────────────────────────────
 
-const PROC_ITEMS = [
-  {
-    labelKey: 'nav.procRequests' as TranslationKey,
-    href:     '/procurement/requests',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.procOrders' as TranslationKey,
-    href:     '/procurement/orders',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-      </svg>
-    ),
-  },
-  {
-    labelKey: 'nav.procReceipts' as TranslationKey,
-    href:     '/procurement/receipts',
-    icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-  },
-]
+function NavLink({
+  href, icon, label, active, locked, onLockedClick, sub = false,
+}: {
+  href: string; icon: string; label: string
+  active: boolean; locked?: boolean; onLockedClick?: () => void; sub?: boolean
+}) {
+  // All items have a 3px left border slot so layout never shifts
+  const base = `w-full flex items-center gap-3 py-2 text-sm font-medium transition-all duration-150 border-l-[3px] rounded-r-xl`
+  const pad  = sub ? 'pl-[21px] pr-3' : 'pl-[13px] pr-3'
+
+  const state = active
+    ? 'bg-blue-700/80 text-white border-[#93c5fd]'
+    : locked
+    ? 'text-blue-300/50 hover:text-blue-300/70 hover:bg-blue-800/30 border-transparent cursor-pointer'
+    : 'text-blue-200 hover:bg-blue-800/60 hover:text-white border-transparent'
+
+  const cls = `${base} ${pad} ${state}`
+
+  if (locked) {
+    return (
+      <button className={cls} onClick={onLockedClick}>
+        <i className={`ti ${icon} text-[18px] shrink-0`} />
+        {label}
+      </button>
+    )
+  }
+  return (
+    <Link href={href} className={cls}>
+      <i className={`ti ${icon} text-[18px] shrink-0`} />
+      {label}
+    </Link>
+  )
+}
+
+// ── CollapsibleSection ────────────────────────────────────────────────────────
+
+interface SectionProps {
+  title:        string
+  icon:         string
+  storageKey:   string
+  hasActiveItem: boolean
+  locked?:      boolean
+  badge?:       string
+  onLockedClick?: () => void
+  children:     React.ReactNode
+}
+
+function CollapsibleSection({
+  title, icon, storageKey, hasActiveItem, locked, badge, onLockedClick, children,
+}: SectionProps) {
+  // Always start open — matches SSR; sync from localStorage after mount to avoid hydration mismatch
+  const [open, setOpen] = React.useState(true)
+  React.useEffect(() => {
+    const v = localStorage.getItem(storageKey)
+    if (v !== null) setOpen(v === 'true')
+  }, [storageKey])
+
+  function toggle() {
+    if (locked && onLockedClick) { onLockedClick(); return }
+    const next = !open
+    setOpen(next)
+    localStorage.setItem(storageKey, String(next))
+  }
+
+  return (
+    <div>
+      {/* Full-width darker strip header */}
+      <button
+        onClick={toggle}
+        className="w-full flex items-center gap-2.5 px-4 py-2 transition-colors duration-150 hover:brightness-110"
+        style={{
+          background:    'rgba(0,0,0,0.2)',
+          borderTop:     '1px solid rgba(255,255,255,0.1)',
+          borderLeft:    `3px solid ${hasActiveItem ? '#93c5fd' : 'transparent'}`,
+          letterSpacing: '0.08em',
+        }}
+      >
+        <i className={`ti ${icon} text-[16px] text-blue-300 shrink-0`} />
+        <span className="text-[12px] font-semibold uppercase text-blue-300 flex-1 text-left">{title}</span>
+        {badge && (
+          <span className="text-[10px] bg-blue-800/80 text-blue-300 px-1.5 py-0.5 rounded-full mr-1">{badge}</span>
+        )}
+        <i className={`ti ti-chevron-down text-[14px] text-blue-400 shrink-0 transition-transform duration-200 ${open ? '' : '-rotate-90'}`} />
+      </button>
+
+      <div
+        className="overflow-hidden transition-all duration-200"
+        style={{ maxHeight: open ? '400px' : '0px', opacity: open ? 1 : 0 }}
+      >
+        <div className="py-1 space-y-0.5">
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const { t }   = useLanguage()
+  const { t }    = useLanguage()
   const { role, user, company, loading, currentPackage, isTrialActive, trialDaysLeft, subscription, canAccess } = useCompany()
   const [showUpgrade,    setShowUpgrade]    = React.useState(false)
   const [upgradeFeature, setUpgradeFeature] = React.useState<string>('purchase_requests')
+
   const hasProcurement = canAccess('purchase_requests')
   const hasInventory   = canAccess('inventory_basic')
   const hasSales       = canAccess('sales_orders')
 
-  const userRank = role ? ROLE_RANK[role] : 3 // default to admin rank while loading
+  const userRank = role ? ROLE_RANK[role] : 3
 
   const visibleNavItems = navItems.filter(item => {
     if (!item.minRole) return true
-    if (loading || !role) return true // show all while loading
+    if (loading || !role) return true
     return userRank >= ROLE_RANK[item.minRole]
   })
 
@@ -264,232 +181,182 @@ export default function Sidebar() {
   const displayName = user?.email?.split('@')[0] ?? 'User'
   const badge       = role ? ROLE_BADGE[role] : null
 
+  const whActive   = WH_ITEMS.some(i => pathname.startsWith(i.href))
+  const salesActive= SALES_ITEMS.some(i => pathname.startsWith(i.href))
+  const procActive = PROC_ITEMS.some(i => pathname.startsWith(i.href))
+
   return (
     <>
     <aside className="w-72 bg-blue-900 text-white flex flex-col shrink-0 h-full border-r border-blue-800">
 
-      {/* ── Logo ─────────────────────────────────────────────────── */}
+      {/* ── Logo ──────────────────────────────────────────────────────────── */}
       <div className="px-6 py-5 border-b border-blue-800">
         <div className="flex items-center justify-between">
           <span className="text-xl font-bold tracking-tight">
             Az<span className="text-blue-300">Finance</span>
           </span>
           {!loading && (
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${PACKAGE_COLORS[currentPackage].bg.replace('bg-', 'bg-').replace('100', '200/20')} ${PACKAGE_COLORS[currentPackage].text.replace('600', '300').replace('700', '300')} border-white/10`}>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${PACKAGE_COLORS[currentPackage].bg.replace('100','200/20')} ${PACKAGE_COLORS[currentPackage].text.replace('600','300').replace('700','300')} border-white/10`}>
               {PACKAGE_LABELS[currentPackage]}
             </span>
           )}
         </div>
-        {company?.name ? (
-          <p className="text-blue-400 text-xs mt-1 truncate">{company.name}</p>
-        ) : (
-          <p className="text-blue-400 text-xs mt-1">Financial Management</p>
-        )}
+        {company?.name
+          ? <p className="text-blue-400 text-xs mt-1 truncate">{company.name}</p>
+          : <p className="text-blue-400 text-xs mt-1">Financial Management</p>
+        }
       </div>
 
-      {/* ── Navigation ───────────────────────────────────────────── */}
-      <nav className="flex-1 px-4 py-6 space-y-1.5 overflow-y-auto">
-        {visibleNavItems.map((item) => {
-          const isActive = pathname === item.href
-          return (
-            <Link
+      {/* ── Scrollable nav ────────────────────────────────────────────────── */}
+      <nav className="flex-1 overflow-y-auto pt-3 pb-1">
+
+        {/* Main items */}
+        <div className="px-3 space-y-0.5">
+          {visibleNavItems.map(item => (
+            <NavLink
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                isActive
-                  ? 'bg-blue-700 text-white shadow-md shadow-blue-900/40'
-                  : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
-              }`}
-            >
-              {item.icon}
-              {t(item.labelKey)}
-            </Link>
-          )
-        })}
-      </nav>
-
-      {/* ── Warehouse section ────────────────────────────────────── */}
-      <div className="px-4 pb-4">
-        <button
-          onClick={() => { if (!hasInventory) { setUpgradeFeature('inventory_basic'); setShowUpgrade(true) } }}
-          className="w-full text-left"
-        >
-          <div className="flex items-center justify-between px-2 mb-1.5">
-            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">
-              {t('wh.section')}
-            </span>
-            {!hasInventory && (
-              <span className="text-xs bg-blue-800 text-blue-300 px-1.5 py-0.5 rounded-full">Mid+</span>
-            )}
-          </div>
-        </button>
-        <div className="space-y-0.5">
-          {WH_ITEMS.map(item => {
-            const isActive = pathname.startsWith(item.href)
-            if (!hasInventory) {
-              return (
-                <button key={item.href}
-                  onClick={() => { setUpgradeFeature('inventory_basic'); setShowUpgrade(true) }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-blue-300/50 hover:text-blue-300/70 hover:bg-blue-800/30 transition-all">
-                  {item.icon}
-                  {t(item.labelKey)}
-                </button>
-              )
-            }
-            return (
-              <Link key={item.href} href={item.href}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive ? 'bg-blue-700 text-white shadow-md shadow-blue-900/40' : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
-                }`}>
-                {item.icon}
-                {t(item.labelKey)}
-              </Link>
-            )
-          })}
+              icon={item.icon}
+              label={t(item.labelKey)}
+              active={item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)}
+            />
+          ))}
         </div>
-      </div>
 
-      {/* ── Sales section ───────────────────────────────────────── */}
-      <div className="px-4 pb-4">
-        <button
-          onClick={() => { if (!hasSales) { setUpgradeFeature('sales_orders'); setShowUpgrade(true) } }}
-          className="w-full text-left"
-        >
-          <div className="flex items-center justify-between px-2 mb-1.5">
-            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">
-              {t('so.section')}
-            </span>
-            {!hasSales && (
-              <span className="text-xs bg-blue-800 text-blue-300 px-1.5 py-0.5 rounded-full">Mid+</span>
-            )}
-          </div>
-        </button>
-        <div className="space-y-0.5">
-          {SALES_ITEMS.map(item => {
-            const isActive = pathname.startsWith(item.href)
-            if (!hasSales) {
-              return (
-                <button key={item.href}
-                  onClick={() => { setUpgradeFeature('sales_orders'); setShowUpgrade(true) }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-blue-300/50 hover:text-blue-300/70 hover:bg-blue-800/30 transition-all">
-                  {item.icon}
-                  {t(item.labelKey)}
-                </button>
-              )
-            }
-            return (
-              <Link key={item.href} href={item.href}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive ? 'bg-blue-700 text-white shadow-md shadow-blue-900/40' : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
-                }`}>
-                {item.icon}
-                {t(item.labelKey)}
-              </Link>
-            )
-          })}
-        </div>
-      </div>
+        {/* Thin divider — reduced gap */}
+        <div className="mx-3 my-2 border-t border-blue-800/60" />
 
-      {/* ── Procurement section ──────────────────────────────────── */}
-      <div className="px-4 pb-4">
-        <button
-          onClick={() => !hasProcurement && setShowUpgrade(true)}
-          className="w-full text-left"
+        {/* ── Warehouse ─────────────────────────────────────────────────── */}
+        <CollapsibleSection
+          title={t('wh.section')}
+          icon="ti-building-warehouse"
+          storageKey="sidebar_warehouse_open"
+          hasActiveItem={whActive}
+          locked={!hasInventory}
+          badge={!hasInventory ? 'Mid+' : undefined}
+          onLockedClick={() => { setUpgradeFeature('inventory_basic'); setShowUpgrade(true) }}
         >
-          <div className="flex items-center justify-between px-2 mb-1.5">
-            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">
-              {t('proc.section')}
-            </span>
-            {!hasProcurement && (
-              <span className="text-xs bg-blue-800 text-blue-300 px-1.5 py-0.5 rounded-full">Mid+</span>
-            )}
-          </div>
-        </button>
-        <div className="space-y-0.5">
-          {PROC_ITEMS.map(item => {
-            const isActive = pathname.startsWith(item.href)
-            if (!hasProcurement) {
-              return (
-                <button
-                  key={item.href}
-                  onClick={() => setShowUpgrade(true)}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium text-blue-300/50 hover:text-blue-300/70 hover:bg-blue-800/30 transition-all"
-                >
-                  {item.icon}
-                  {t(item.labelKey)}
-                </button>
-              )
-            }
-            return (
-              <Link
+          <div className="px-3 space-y-0.5">
+            {WH_ITEMS.map(item => (
+              <NavLink
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-blue-700 text-white shadow-md shadow-blue-900/40'
-                    : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
+                icon={item.icon}
+                label={t(item.labelKey)}
+                active={pathname.startsWith(item.href)}
+                locked={!hasInventory}
+                onLockedClick={() => { setUpgradeFeature('inventory_basic'); setShowUpgrade(true) }}
+                sub
+              />
+            ))}
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Sales ─────────────────────────────────────────────────────── */}
+        <CollapsibleSection
+          title={t('so.section')}
+          icon="ti-shopping-cart"
+          storageKey="sidebar_sales_open"
+          hasActiveItem={salesActive}
+          locked={!hasSales}
+          badge={!hasSales ? 'Mid+' : undefined}
+          onLockedClick={() => { setUpgradeFeature('sales_orders'); setShowUpgrade(true) }}
+        >
+          <div className="px-3 space-y-0.5">
+            {SALES_ITEMS.map(item => (
+              <NavLink
+                key={item.href}
+                href={item.href}
+                icon={item.icon}
+                label={t(item.labelKey)}
+                active={pathname.startsWith(item.href)}
+                locked={!hasSales}
+                onLockedClick={() => { setUpgradeFeature('sales_orders'); setShowUpgrade(true) }}
+                sub
+              />
+            ))}
+          </div>
+        </CollapsibleSection>
+
+        {/* ── Procurement ───────────────────────────────────────────────── */}
+        <CollapsibleSection
+          title={t('proc.section')}
+          icon="ti-truck-delivery"
+          storageKey="sidebar_procurement_open"
+          hasActiveItem={procActive}
+          locked={!hasProcurement}
+          badge={!hasProcurement ? 'Mid+' : undefined}
+          onLockedClick={() => { setUpgradeFeature('purchase_requests'); setShowUpgrade(true) }}
+        >
+          <div className="px-3 space-y-0.5">
+            {PROC_ITEMS.map(item => (
+              <NavLink
+                key={item.href}
+                href={item.href}
+                icon={item.icon}
+                label={t(item.labelKey)}
+                active={pathname.startsWith(item.href)}
+                locked={!hasProcurement}
+                onLockedClick={() => { setUpgradeFeature('purchase_requests'); setShowUpgrade(true) }}
+                sub
+              />
+            ))}
+          </div>
+        </CollapsibleSection>
+
+      </nav>
+
+      {/* ── Bottom: trial badge + user — pinned via flex column ───────────── */}
+      <div className="mt-auto">
+
+        {/* Trial / subscription banner */}
+        {!loading && subscription && (
+          <div className="px-3 pb-2">
+            {isTrialActive ? (
+              <Link
+                href="/billing"
+                className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors ${
+                  trialDaysLeft <= 3
+                    ? 'bg-red-500/15 text-red-300 border border-red-500/25 hover:bg-red-500/25'
+                    : trialDaysLeft <= 7
+                    ? 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/25 hover:bg-yellow-500/25'
+                    : 'bg-blue-500/15 text-blue-300 border border-blue-500/25 hover:bg-blue-500/25'
                 }`}
               >
-                {item.icon}
-                {t(item.labelKey)}
+                <i className="ti ti-clock text-[15px] shrink-0" />
+                <span className="truncate">{t('billing.trialDaysLeft').replace('{n}', String(trialDaysLeft))}</span>
               </Link>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* ── Trial / subscription banner ───────────────────────────── */}
-      {!loading && subscription && (
-        <div className="px-4 pb-2">
-          {isTrialActive ? (
-            <Link
-              href="/billing"
-              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors ${
-                trialDaysLeft <= 3
-                  ? 'bg-red-500/15 text-red-300 border border-red-500/25 hover:bg-red-500/25'
-                  : trialDaysLeft <= 7
-                  ? 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/25 hover:bg-yellow-500/25'
-                  : 'bg-blue-500/15 text-blue-300 border border-blue-500/25 hover:bg-blue-500/25'
-              }`}
-            >
-              <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="truncate">
-                {t('billing.trialDaysLeft').replace('{n}', String(trialDaysLeft))}
-              </span>
-            </Link>
-          ) : subscription.status === 'expired' || subscription.status === 'cancelled' ? (
-            <Link
-              href="/billing"
-              className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium bg-red-500/15 text-red-300 border border-red-500/25 hover:bg-red-500/25 transition-colors"
-            >
-              <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <span>{t('billing.trialExpired')}</span>
-            </Link>
-          ) : null}
-        </div>
-      )}
-
-      {/* ── User / Role section ───────────────────────────────────── */}
-      <div className="px-4 py-5 border-t border-blue-800">
-        <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-blue-800/50 transition-colors">
-          <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-sm font-semibold shrink-0 ring-2 ring-blue-500">
-            {initials}
+            ) : subscription.status === 'expired' || subscription.status === 'cancelled' ? (
+              <Link
+                href="/billing"
+                className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium bg-red-500/15 text-red-300 border border-red-500/25 hover:bg-red-500/25 transition-colors"
+              >
+                <i className="ti ti-alert-triangle text-[15px] shrink-0" />
+                <span>{t('billing.trialExpired')}</span>
+              </Link>
+            ) : null}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-white truncate">{displayName}</p>
-            {badge ? (
-              <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full mt-0.5 ${badge.cls}`}>
-                {badge.label}
-              </span>
-            ) : (
-              <p className="text-xs text-blue-400 truncate">{user?.email ?? ''}</p>
-            )}
+        )}
+
+        {/* User / Role */}
+        <div className="px-4 py-4 border-t border-blue-800">
+          <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-blue-800/50 transition-colors">
+            <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-sm font-semibold shrink-0 ring-2 ring-blue-500">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white truncate">{displayName}</p>
+              {badge ? (
+                <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full mt-0.5 ${badge.cls}`}>
+                  {badge.label}
+                </span>
+              ) : (
+                <p className="text-xs text-blue-400 truncate">{user?.email ?? ''}</p>
+              )}
+            </div>
           </div>
         </div>
+
       </div>
     </aside>
     {showUpgrade && <UpgradePrompt feature={upgradeFeature} onClose={() => setShowUpgrade(false)} />}

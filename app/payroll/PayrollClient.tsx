@@ -381,7 +381,7 @@ async function generatePayslipPDF(
       doc.setTextColor(...gray)
       doc.text(
         `${lang === 'az' ? 'Avans ödəniş tarixi' : 'Advance paid on'}: ` +
-        new Date(entry.avans_paid_at).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
+        new Intl.DateTimeFormat('az-AZ').format(new Date(entry.avans_paid_at)),
         M, y
       ); y += 7
     }
@@ -402,7 +402,7 @@ async function generatePayslipPDF(
   doc.setFontSize(7)
   doc.setFont('Roboto', 'normal')
   doc.setTextColor(...gray)
-  doc.text('AzFinance · ' + new Date().toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB'), M, 280)
+  doc.text('AzFinance · ' + new Intl.DateTimeFormat('az-AZ').format(new Date()), M, 280)
   doc.text(`${lang === 'az' ? 'Dövr' : 'Period'}: ${monthName} ${year}`, W - M, 280, { align: 'right' })
 
   if (mode === 'base64') {
@@ -469,7 +469,7 @@ async function generateRunPDF(
       ...entries.map(e => {
         const emp = empMap.get(e.employee_id)
         const avansDate = e.avans_paid_at
-          ? new Date(e.avans_paid_at).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'short', year: '2-digit' })
+          ? new Intl.DateTimeFormat('az-AZ').format(new Date(e.avans_paid_at))
           : '—'
         return [
           emp?.full_name ?? '',
@@ -1351,7 +1351,7 @@ export default function PayrollClient() {
                                   dbEntry.avans_paid ? (
                                     <span className="text-[9px] text-green-600 font-semibold whitespace-nowrap">
                                       ✓ {lang === 'az' ? 'Ödənilib' : 'Paid'}{' '}
-                                      {new Date(dbEntry.avans_paid_at!).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day: '2-digit', month: 'short' })}
+                                      {new Intl.DateTimeFormat('az-AZ').format(new Date(dbEntry.avans_paid_at!))}
                                     </span>
                                   ) : num(f.avans) > 0 ? (
                                     <button
@@ -1486,10 +1486,10 @@ export default function PayrollClient() {
                       )}
                     </td>
                     <td className="px-5 py-4 text-sm text-gray-500">
-                      {run.approved_at ? new Date(run.approved_at).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
+                      {run.approved_at ? new Intl.DateTimeFormat('az-AZ').format(new Date(run.approved_at)) : '—'}
                     </td>
                     <td className="px-5 py-4 text-sm text-gray-400">
-                      {new Date(run.created_at).toLocaleDateString(lang === 'az' ? 'az-AZ' : 'en-GB', { day:'2-digit', month:'short', year:'numeric' })}
+                      {new Intl.DateTimeFormat('az-AZ').format(new Date(run.created_at))}
                     </td>
                     <td className="px-5 py-4">
                       <button onClick={() => openHistoryRun(run)}
