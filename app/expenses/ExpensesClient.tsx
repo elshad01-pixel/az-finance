@@ -107,7 +107,7 @@ export default function ExpensesClient() {
   const [showModal,      setShowModal]      = useState(false)
   const [saving,         setSaving]         = useState(false)
   const [saveError,      setSaveError]      = useState<string | null>(null)
-  const [filterCat,      setFilterCat]      = useState<MainCategory | 'All'>('All')
+  const [filterCat,      setFilterCat]      = useState<MainCategory | 'All' | 'Procurement'>('All')
   const [dateFilter,     setDateFilter]     = useState<DateFilter>('thisMonth')
   const [search,         setSearch]         = useState('')
   const [templateSaved,  setTemplateSaved]  = useState(false)
@@ -485,6 +485,8 @@ export default function ExpensesClient() {
   const range = getDateRange(dateFilter)
   const dateFiltered = range ? expenses.filter(e => e.date >= range.start && e.date <= range.end) : expenses
   const filtered = dateFiltered.filter(e => {
+    if (filterCat === 'Procurement') return e.source === 'procurement'
+    if (e.source === 'procurement') return false
     const catOk  = filterCat === 'All' || e.category === filterCat
     const q      = search.toLowerCase()
     const textOk = !q || e.description.toLowerCase().includes(q) || (e.supplier ?? '').toLowerCase().includes(q)
@@ -495,13 +497,14 @@ export default function ExpensesClient() {
   const now    = new Date()
   const mStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
   const mEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
-  const totalThisMonth   = expenses.filter(e => e.date >= mStart && e.date <= mEnd).reduce((s, e) => s + e.amount, 0)
+  const totalThisMonth   = expenses.filter(e => e.source !== 'procurement' && e.date >= mStart && e.date <= mEnd).reduce((s, e) => s + e.amount, 0)
+  const procThisMonth    = expenses.filter(e => e.source === 'procurement' && e.date >= mStart && e.date <= mEnd).reduce((s, e) => s + e.amount, 0)
   const recurringMonthly = expenses.filter(e => e.is_recurring && e.frequency === 'monthly').reduce((s, e) => s + e.amount, 0)
-  const overdueCount     = expenses.filter(e => isOverdue(e)).length
+  const overdueCount     = expenses.filter(e => e.source !== 'procurement' && isOverdue(e)).length
 
   const byCategory = MAIN_CATEGORIES.map(cat => ({
     cat,
-    total: dateFiltered.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0),
+    total: filtered.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0),
   })).filter(x => x.total > 0)
 
   const subcats      = CATEGORY_MAP[category] as string[]
@@ -561,10 +564,15 @@ export default function ExpensesClient() {
       </div>
 
       {/* ── Summary cards ── */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs font-medium text-gray-500 mb-1">{t('exp.totalThisMonth')}</p>
           <p className="text-xl font-bold text-gray-900 tabular-nums">{fmt(totalThisMonth)}</p>
+          <p className="text-[10px] text-gray-400 mt-0.5">{lang === 'az' ? 'satınalma xaric' : 'excl. procurement'}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-orange-100 shadow-sm p-4">
+          <p className="text-xs font-medium text-orange-600 mb-1">{lang === 'az' ? 'Satınalma Bu Ay' : 'Procurement This Month'}</p>
+          <p className="text-xl font-bold text-orange-600 tabular-nums">{fmt(procThisMonth)}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
           <p className="text-xs font-medium text-gray-500 mb-1">{t('exp.recurringMonthly')}</p>
@@ -644,6 +652,16 @@ export default function ExpensesClient() {
             {cat === 'All' ? t('common.all') : tCat(cat)}
           </button>
         ))}
+        <button
+          onClick={() => setFilterCat('Procurement')}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+            filterCat === 'Procurement'
+              ? 'bg-blue-700 text-white'
+              : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+          }`}
+        >
+          📦 {lang === 'az' ? 'Satınalma' : 'Procurement'}
+        </button>
       </div>
 
       {/* ── Category totals chips ── */}

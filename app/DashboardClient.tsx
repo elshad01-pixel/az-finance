@@ -568,18 +568,18 @@ export default function DashboardClient() {
         applyRange(supabase.from('invoices').select('amount').eq('status', 'Paid'), sel),
         applyRange(supabase.from('invoices').select('amount').eq('status', 'Paid'), prev),
         applyRange(supabase.from('invoices').select('amount').eq('status', 'Unpaid'), sel),
-        applyRange(supabase.from('expenses').select('amount'), sel),
-        applyRange(supabase.from('expenses').select('amount'), prev),
+        applyRange(supabase.from('expenses').select('amount').or('source.is.null,source.neq.procurement'), sel),
+        applyRange(supabase.from('expenses').select('amount').or('source.is.null,source.neq.procurement'), prev),
         supabase.from('invoices').select('amount, date').neq('status', 'Draft').gte('date', chartStart).lte('date', chartEnd),
-        supabase.from('expenses').select('amount, date').gte('date', chartStart).lte('date', chartEnd),
+        supabase.from('expenses').select('amount, date').or('source.is.null,source.neq.procurement').gte('date', chartStart).lte('date', chartEnd),
         supabase.from('invoices').select('amount, date, client, number').neq('status', 'Draft').order('date', { ascending: false }).limit(5),
-        supabase.from('expenses').select('amount, date, description, category').order('date', { ascending: false }).limit(5),
+        supabase.from('expenses').select('amount, date, description, category').or('source.is.null,source.neq.procurement').order('date', { ascending: false }).limit(5),
         supabase.from('tax_settings').select('tax_regime, business_type, simplified_eligible, employee_count, vat_registered').maybeSingle(),
         supabase.from('invoices').select('amount').neq('status', 'Draft')
           .gte('date', (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10) })()),
-        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid'), sel),
-        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid'), prev),
-        supabase.from('expenses').select('date, description, amount').eq('payment_status', 'pending').order('date'),
+        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid').or('source.is.null,source.neq.procurement'), sel),
+        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid').or('source.is.null,source.neq.procurement'), prev),
+        supabase.from('expenses').select('date, description, amount').eq('payment_status', 'pending').or('source.is.null,source.neq.procurement').order('date'),
       ])
 
       const ts        = taxRow as TaxSettings | null

@@ -38,14 +38,14 @@ interface GoodsReceipt {
     total_amount: number
     vendors?: { name: string } | null
   } | null
-  expenses?: { payment_status: string; amount: number } | null
+  expenses?: { id: number; payment_status: string; amount: number; category: string | null } | null
 }
 
 const CHECK = '✅'
 const PENDING = '⏳'
 
 export default function ReceiptsClient() {
-  const { t }     = useLanguage()
+  const { t, lang } = useLanguage()
   const { company, user, isFinance, canAccess } = useCompany()
   const params        = useSearchParams()
   const autoOpenedRef = useRef<string | null>(null)
@@ -79,7 +79,7 @@ export default function ReceiptsClient() {
     setLoading(true)
     const [{ data: rData }, { data: poData }] = await Promise.all([
       supabase.from('goods_receipts')
-        .select('*, purchase_orders(po_number, total_amount, vendors(name)), expenses(payment_status, amount)')
+        .select('*, purchase_orders(po_number, total_amount, vendors(name)), expenses(id, payment_status, amount, category)')
         .order('created_at', { ascending: false }),
       supabase.from('purchase_orders')
         .select('id, po_number, vendor_id, items, total_amount, vendors(name)')
@@ -240,6 +240,32 @@ export default function ReceiptsClient() {
       {toast && (
         <div className="fixed top-4 right-4 z-50 bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg">{toast}</div>
       )}
+
+      {/* Summary cards */}
+      {!loading && (() => {
+        const mStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
+        const confirmed = receipts.filter(r => r.status === 'confirmed')
+        const monthlySpend = confirmed
+          .filter(r => r.received_date >= mStart)
+          .reduce((s, r) => s + (r.expenses?.amount ?? r.purchase_orders?.total_amount ?? 0), 0)
+        const unpaidCount = confirmed.filter(r => r.expenses?.payment_status !== 'paid').length
+        return (
+          <div className="grid grid-cols-2 gap-4 mb-5">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+              <p className="text-xs font-medium text-gray-500 mb-1">
+                {lang === 'az' ? 'Bu Ay Satınalma Xərcləri' : 'Total Procurement Spend This Month'}
+              </p>
+              <p className="text-xl font-bold text-gray-900 tabular-nums">₼ {monthlySpend.toFixed(2)}</p>
+            </div>
+            <div className={`rounded-xl border shadow-sm p-4 ${unpaidCount > 0 ? 'bg-orange-50 border-orange-200' : 'bg-white border-gray-100'}`}>
+              <p className={`text-xs font-medium mb-1 ${unpaidCount > 0 ? 'text-orange-600' : 'text-gray-500'}`}>
+                {lang === 'az' ? 'Ödənilməmiş Satınalma' : 'Unpaid Procurement'}
+              </p>
+              <p className={`text-xl font-bold tabular-nums ${unpaidCount > 0 ? 'text-orange-600' : 'text-gray-900'}`}>{unpaidCount}</p>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Toolbar */}
       <div className="flex items-center justify-between mb-4">
@@ -510,6 +536,37 @@ export default function ReceiptsClient() {
                   </p>
                 </div>
               </div>
+
+              {/* Linked Expense */}
+              {detailGR.expense_id && (
+                <div className="bg-gray-50 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                    {lang === 'az' ? 'Əlaqəli Xərc' : 'Linked Expense'}
+                  </p>
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs text-gray-500">ID</p>
+                      <p className="font-medium text-gray-800">#{detailGR.expense_id}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">{lang === 'az' ? 'Kateqoriya' : 'Category'}</p>
+                      <p className="font-medium text-gray-800">{detailGR.expenses?.category ?? '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">{lang === 'az' ? 'Ödəniş statusu' : 'Payment Status'}</p>
+                      <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        detailGR.expenses?.payment_status === 'paid'
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-orange-100 text-orange-700'
+                      }`}>
+                        {detailGR.expenses?.payment_status === 'paid'
+                          ? (lang === 'az' ? 'Ödənilib' : 'Paid')
+                          : (lang === 'az' ? 'Gözləyir' : 'Pending')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Vendor Invoice section */}
               {detailGR.status === 'confirmed' && (
