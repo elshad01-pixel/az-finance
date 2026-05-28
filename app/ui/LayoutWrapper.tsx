@@ -1,17 +1,33 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { useEffect } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from './Sidebar'
 import Header from './Header'
+import { useCompany } from '@/lib/CompanyContext'
 
-const AUTH_PATHS = ['/login', '/signup']
+const AUTH_PATHS = ['/login', '/signup', '/create-company']
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router   = useRouter()
+  const { user, company, loading, needsSetup } = useCompany()
+
+  // If authenticated but no company yet → send to setup wizard
+  useEffect(() => {
+    if (loading) return
+    const isPublic = AUTH_PATHS.some(p => pathname.startsWith(p))
+    if (user && needsSetup && !isPublic) {
+      router.push('/create-company')
+    }
+  }, [loading, user, needsSetup, pathname, router])
 
   if (AUTH_PATHS.some(p => pathname.startsWith(p))) {
     return <>{children}</>
   }
+
+  // Show blank while loading or redirecting to setup
+  if (loading || (user && needsSetup)) return null
 
   return (
     <>

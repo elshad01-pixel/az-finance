@@ -16,6 +16,7 @@ export interface Company {
   name:       string
   owner_id:   string
   created_at: string
+  tax_id?:    string | null
 }
 
 export interface CompanyMember {
@@ -53,6 +54,7 @@ interface CompanyContextValue {
   canAccess:      (feature: string) => boolean
   user:           User | null
   loading:        boolean
+  needsSetup:     boolean
   setupError:     string | null
   refresh:        () => Promise<void>
 }
@@ -71,6 +73,7 @@ const CompanyContext = createContext<CompanyContextValue>({
   canAccess:      () => true,
   user:           null,
   loading:        true,
+  needsSetup:     false,
   setupError:     null,
   refresh:        async () => {},
 })
@@ -111,11 +114,13 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [user,         setUser]         = useState<User | null>(null)
   const [loading,      setLoading]      = useState(true)
+  const [needsSetup,   setNeedsSetup]   = useState(false)
   const [setupError,   setSetupError]   = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setSetupError(null)
+    setNeedsSetup(false)
 
     const { data: { session }, error: sessionErr } = await supabase.auth.getSession()
     if (sessionErr) logError('getSession failed', sessionErr)
@@ -172,67 +177,9 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    log('No active membership — will create company for new user')
-
-    // ── Step 3a: Direct insert ─────────────────────────────────────────────
-    const companyName = (authUser.email ?? 'My Company').split('@')[0]
-    const { data: newCompany, error: compInsertErr } = await supabase
-      .from('companies')
-      .insert({ name: companyName, owner_id: authUser.id })
-      .select()
-      .single()
-
-    if (compInsertErr) {
-      logError('Direct company insert failed', compInsertErr)
-    } else {
-      log('Company created directly', newCompany)
-      const { error: memInsertErr } = await supabase
-        .from('company_members')
-        .insert({
-          company_id:    newCompany.id,
-          user_id:       authUser.id,
-          role:          'admin',
-          status:        'active',
-          invited_email: authUser.email ?? null,
-        })
-
-      if (memInsertErr) {
-        logError('Direct company_members insert failed', memInsertErr)
-      } else {
-        log('company_members row inserted directly')
-        const { data: mem3 } = await fetchMembership(authUser.id)
-        if (mem3) {
-          const comp3 = (mem3 as unknown as { companies: Company }).companies
-          setMembership(mem3 as CompanyMember)
-          setCompany(comp3)
-          const { data: sub3 } = await fetchSubscription(comp3.id)
-          setSubscription(sub3 as Subscription | null)
-          setLoading(false)
-          return
-        }
-      }
-    }
-
-    // ── Step 3b: RPC fallback ──────────────────────────────────────────────
-    log('Falling back to ensure_user_has_company() RPC')
-    const { error: rpcErr } = await supabase.rpc('ensure_user_has_company')
-    if (rpcErr) logError('ensure_user_has_company RPC failed', rpcErr)
-
-    const { data: mem4 } = await fetchMembership(authUser.id)
-    if (mem4) {
-      const comp4 = (mem4 as unknown as { companies: Company }).companies
-      setMembership(mem4 as CompanyMember)
-      setCompany(comp4)
-      const { data: sub4 } = await fetchSubscription(comp4.id)
-      setSubscription(sub4 as Subscription | null)
-    } else {
-      const errMsg = rpcErr
-        ? `Company setup failed: ${rpcErr.message}`
-        : 'Company setup failed: no membership after all attempts.'
-      logError(errMsg)
-      setSetupError(errMsg)
-    }
-
+    // ── Step 3: No membership — user needs to create their company ────────
+    log('No active membership — redirecting to company setup')
+    setNeedsSetup(true)
     setLoading(false)
   }, [])
 
@@ -245,6 +192,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
         setCompany(null)
         setMembership(null)
         setSubscription(null)
+        setNeedsSetup(false)
         setLoading(false)
         return
       }
@@ -283,7 +231,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
       company, membership, subscription, role,
       isAdmin, isManager, isFinance,
       currentPackage, isTrialActive, trialDaysLeft, canAccess,
-      user, loading, setupError, refresh: load,
+      user, loading, needsSetup, setupError, refresh: load,
     }}>
       {children}
     </CompanyContext.Provider>

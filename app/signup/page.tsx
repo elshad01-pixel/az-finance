@@ -55,10 +55,10 @@ function SignupForm() {
       return
     }
 
-    // If signup gave us an immediate session, go to dashboard
-    // CompanyContext will auto-accept the pending invitation on load
     if (data.session) {
-      router.push('/')
+      // Invited users already have a company via CompanyContext auto-accept
+      // Fresh signups need to set up their company first
+      router.push(inviteToken ? '/' : '/create-company')
       router.refresh()
     } else {
       setSuccess('Account created! Check your email for a confirmation link.')
