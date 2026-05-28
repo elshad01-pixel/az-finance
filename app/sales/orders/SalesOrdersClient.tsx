@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
+import ProductSearchInput, { type ProductOption } from '@/app/ui/ProductSearchInput'
 import type { TranslationKey } from '@/lib/i18n'
 
 type SOStatus = 'draft' | 'confirmed' | 'delivered' | 'invoiced' | 'cancelled'
@@ -64,7 +65,7 @@ function fmt(n: number) {
 const VAT_RATE = 0.18
 
 export default function SalesOrdersClient() {
-  const { t } = useLanguage()
+  const { t, lang } = useLanguage()
   const router = useRouter()
 
   const [orders,       setOrders]       = useState<SalesOrder[]>([])
@@ -119,6 +120,10 @@ export default function SalesOrdersClient() {
     setShowForm(true)
   }
 
+  const productOptions = useMemo<ProductOption[]>(() =>
+    products.map(p => ({ id: p.id, sku: p.sku, name: p.name, unit: p.unit, price: Number(p.sale_price) || 0, stock_qty: p.stock_qty })),
+  [products])
+
   function addItem() { setFormItems(p => [...p, EMPTY_ITEM()]) }
   function removeItem(idx: number) { setFormItems(p => p.filter((_, i) => i !== idx)) }
 
@@ -126,21 +131,25 @@ export default function SalesOrdersClient() {
     setFormItems(p => p.map((it, i) => i === idx ? { ...it, [field]: value } : it))
   }
 
-  function toggleStock(idx: number, val: boolean) {
-    setFormItems(p => p.map((it, i) => i === idx
-      ? { ...it, is_stock_item: val, product_id: val ? it.product_id : null }
-      : it))
+  function selectProduct(idx: number, p: ProductOption) {
+    setFormItems(prev => prev.map((it, i) => i === idx ? {
+      ...it,
+      product_id:    p.id,
+      description:   p.name,
+      unit:          p.unit,
+      unit_price:    p.price,
+      is_stock_item: true,
+    } : it))
   }
 
-  function selectProduct(idx: number, prodId: string) {
-    const prod = products.find(p => p.id === prodId)
-    if (!prod) return
-    setFormItems(p => p.map((it, i) => i === idx ? {
+  function clearProduct(idx: number) {
+    setFormItems(prev => prev.map((it, i) => i === idx ? {
       ...it,
-      product_id:  prod.id,
-      description: `${prod.sku} — ${prod.name}`,
-      unit:        prod.unit,
-      unit_price:  Number(prod.sale_price) || 0,
+      product_id:    null,
+      description:   '',
+      unit:          'ədəd',
+      unit_price:    0,
+      is_stock_item: false,
     } : it))
   }
 
@@ -399,47 +408,40 @@ export default function SalesOrdersClient() {
                   {formItems.map((it, idx) => {
                     const prod     = products.find(p => p.id === it.product_id)
                     const avail    = prod?.stock_qty ?? 0
-                    const insuffic = it.is_stock_item && prod && it.quantity > avail
+                    const insuffic = it.product_id && prod && it.quantity > avail
                     return (
-                      <div key={idx} className={`border rounded-xl overflow-hidden ${insuffic ? 'border-orange-300 bg-orange-50/30' : 'border-gray-200'}`}>
-                        {/* Toggle row */}
-                        <div className="flex items-center gap-2 px-3 pt-2.5 pb-1">
-                          <input type="checkbox" checked={it.is_stock_item} onChange={e => toggleStock(idx, e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                          <span className="text-xs text-gray-500">{t('proc.stockProduct')}</span>
-                          <span className="flex-1" />
+                      <div key={idx} className={`border rounded-xl p-3 ${insuffic ? 'border-orange-300 bg-orange-50/30' : 'border-gray-200'}`}>
+                        {/* Product search + delete button */}
+                        <div className="flex items-start gap-2 mb-2">
+                          <div className="flex-1 min-w-0">
+                            <ProductSearchInput
+                              products={productOptions}
+                              selectedId={it.product_id}
+                              value={it.description}
+                              onChange={text => updateItem(idx, 'description', text)}
+                              onSelect={p => selectProduct(idx, p)}
+                              onClear={() => clearProduct(idx)}
+                              lang={lang}
+                            />
+                          </div>
                           {formItems.length > 1 && (
-                            <button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors">
+                            <button onClick={() => removeItem(idx)} className="flex-shrink-0 text-gray-300 hover:text-red-500 transition-colors mt-1">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                               </svg>
                             </button>
                           )}
                         </div>
-                        {/* Fields */}
-                        <div className="grid grid-cols-[2fr_56px_84px_64px] gap-1.5 px-3 pb-2.5">
-                          {it.is_stock_item ? (
-                            <div>
-                              <select value={it.product_id ?? ''} onChange={e => selectProduct(idx, e.target.value)}
-                                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <option value="">{t('proc.selectProduct')}</option>
-                                {products.map(p => (
-                                  <option key={p.id} value={p.id}>{p.name} ({p.sku}) — {p.stock_qty} {p.unit} mövcud</option>
-                                ))}
-                              </select>
-                              {prod && (
-                                <p className={`text-xs mt-0.5 ${insuffic ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-                                  {insuffic
-                                    ? `⚠ ${t('so.insufficientStock')}`
-                                    : `${t('so.availableStock')}: ${avail} ${prod.unit}`}
-                                </p>
-                              )}
-                            </div>
-                          ) : (
-                            <input value={it.description} onChange={e => updateItem(idx, 'description', e.target.value)}
-                              placeholder={t('common.description')}
-                              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                          )}
+                        {/* Stock warning */}
+                        {prod && (
+                          <p className={`text-xs mb-2 ${insuffic ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
+                            {insuffic
+                              ? `⚠ ${t('so.insufficientStock')}`
+                              : `${t('so.availableStock')}: ${avail} ${prod.unit}`}
+                          </p>
+                        )}
+                        {/* Qty + Price + Unit */}
+                        <div className="grid grid-cols-3 gap-1.5">
                           <input type="number" min="0.001" step="any" value={it.quantity}
                             onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
                             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -447,15 +449,9 @@ export default function SalesOrdersClient() {
                             onChange={e => updateItem(idx, 'unit_price', Number(e.target.value))}
                             placeholder="0.00"
                             className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                          {it.is_stock_item ? (
-                            <div className="border border-gray-100 bg-gray-50 rounded-lg px-1 py-1.5 text-xs text-gray-500 flex items-center justify-center">
-                              {it.unit || 'ədəd'}
-                            </div>
-                          ) : (
-                            <input value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}
-                              placeholder="ədəd"
-                              className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                          )}
+                          <input value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}
+                            placeholder="ədəd"
+                            className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-blue-500" />
                         </div>
                       </div>
                     )

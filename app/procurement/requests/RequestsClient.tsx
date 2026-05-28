@@ -1,19 +1,20 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
 import { useCompany } from '@/lib/CompanyContext'
 import UpgradePrompt from '@/app/ui/UpgradePrompt'
+import ProductSearchInput, { type ProductOption } from '@/app/ui/ProductSearchInput'
 import type { TranslationKey } from '@/lib/i18n'
 
 interface LineItem {
-  description:   string
-  quantity:      number
-  unit_price:    number
-  unit:          string
-  product_id?:   string | null
+  description:    string
+  quantity:       number
+  unit_price:     number
+  unit:           string
+  product_id?:    string | null
   is_stock_item?: boolean
 }
 
@@ -73,7 +74,7 @@ const PRIORITY_KEY: Record<PRPriority, TranslationKey> = {
 const EMPTY_ITEM = (): LineItem => ({ description: '', quantity: 1, unit_price: 0, unit: 'ədəd', product_id: null, is_stock_item: false })
 
 export default function RequestsClient() {
-  const { t }          = useLanguage()
+  const { t, lang }    = useLanguage()
   const { company, user, membership, isManager, canAccess } = useCompany()
   const router         = useRouter()
 
@@ -91,12 +92,12 @@ export default function RequestsClient() {
   const [toast,         setToast]         = useState<string | null>(null)
 
   // form state
-  const [title,       setTitle]       = useState('')
-  const [description, setDescription] = useState('')
-  const [vendorId,    setVendorId]    = useState('')
-  const [items,       setItems]       = useState<LineItem[]>([EMPTY_ITEM()])
-  const [priority,    setPriority]    = useState<PRPriority>('normal')
-  const [neededBy,    setNeededBy]    = useState('')
+  const [notes,     setNotes]     = useState('')
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [vendorId,  setVendorId]  = useState('')
+  const [items,     setItems]     = useState<LineItem[]>([EMPTY_ITEM()])
+  const [priority,  setPriority]  = useState<PRPriority>('normal')
+  const [neededBy,  setNeededBy]  = useState('')
 
   const isEmployee = membership?.role === 'employee'
 
@@ -120,13 +121,17 @@ export default function RequestsClient() {
 
   useEffect(() => { load() }, [load])
 
+  const productOptions = useMemo<ProductOption[]>(() =>
+    products.map(p => ({ id: p.id, sku: p.sku, name: p.name, unit: p.unit, price: p.cost_price })),
+  [products])
+
   function notify(msg: string) {
     setToast(msg)
     setTimeout(() => setToast(null), 3000)
   }
 
   function resetForm() {
-    setTitle(''); setDescription(''); setVendorId(''); setPriority('normal')
+    setNotes(''); setNotesOpen(false); setVendorId(''); setPriority('normal')
     setNeededBy(''); setItems([EMPTY_ITEM()])
   }
 
@@ -136,43 +141,49 @@ export default function RequestsClient() {
     setItems(prev => prev.map((it, i) => i === idx ? { ...it, [field]: val } : it))
   }
 
-  function selectProduct(idx: number, productId: string) {
-    const product = products.find(p => p.id === productId)
-    if (!product) {
-      setItems(prev => prev.map((it, i) => i === idx ? { ...it, product_id: null, description: '', unit: 'ədəd', unit_price: 0 } : it))
-      return
-    }
+  function selectProduct(idx: number, p: ProductOption) {
     setItems(prev => prev.map((it, i) => i === idx ? {
       ...it,
-      product_id:  product.id,
-      description: product.name,
-      unit:        product.unit,
-      unit_price:  product.cost_price,
+      product_id:    p.id,
+      description:   p.name,
+      unit:          p.unit,
+      unit_price:    p.price,
+      is_stock_item: true,
     } : it))
   }
 
-  function toggleStockItem(idx: number, val: boolean) {
+  function clearProduct(idx: number) {
     setItems(prev => prev.map((it, i) => i === idx ? {
       ...it,
-      is_stock_item: val,
-      product_id:    val ? it.product_id : null,
+      product_id:    null,
+      description:   '',
+      unit:          'ədəd',
+      unit_price:    0,
+      is_stock_item: false,
     } : it))
   }
 
   async function handleCreate() {
-    if (!title.trim() || !company || !user) return
+    if (!company || !user || !vendorId || !neededBy) return
+    const selectedVendor = vendors.find(v => String(v.id) === vendorId)
+    const dateStr = new Intl.DateTimeFormat('az-AZ').format(new Date())
+    const title = selectedVendor
+      ? `${selectedVendor.name} — ${dateStr}`
+      : `${lang === 'az' ? 'Satınalma Sorğusu' : 'Purchase Request'} — ${dateStr}`
     setSaving(true)
     const { data: numData } = await supabase.rpc('get_next_pr_number', { p_company_id: company.id })
     const { error } = await supabase.from('purchase_requests').insert({
       company_id:     company.id,
       request_number: numData as string,
       requested_by:   user.id,
-      title: title.trim(),
-      description: description.trim() || null,
-      vendor_id: vendorId ? Number(vendorId) : null,
-      items, total_amount: total,
-      status: 'draft', priority,
-      needed_by: neededBy || null,
+      title,
+      description:    notes.trim() || null,
+      vendor_id:      vendorId ? Number(vendorId) : null,
+      items,
+      total_amount:   total,
+      status:         'draft',
+      priority,
+      needed_by:      neededBy || null,
     })
     if (error) { notify('Error: ' + error.message) }
     else { notify(t('proc.requestCreated')); setShowForm(false); resetForm(); load() }
@@ -211,7 +222,6 @@ export default function RequestsClient() {
   }
 
   const filtered = requests.filter(r => filterStatus === 'all' || r.status === filterStatus)
-
   const pendingCount  = requests.filter(r => r.status === 'submitted').length
   const approvedCount = requests.filter(r => r.status === 'approved').length
 
@@ -226,10 +236,8 @@ export default function RequestsClient() {
             </svg>
           </div>
           <h2 className="text-lg font-semibold text-gray-700 mb-2">{t('proc.upgradeHint')}</h2>
-          <button
-            onClick={() => setShowUpgrade(true)}
-            className="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors"
-          >
+          <button onClick={() => setShowUpgrade(true)}
+            className="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition-colors">
             {t('billing.upgrade')}
           </button>
         </div>
@@ -249,9 +257,9 @@ export default function RequestsClient() {
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
-          { label: t('proc.pendingApprovals'), value: pendingCount,        color: 'text-blue-600',  bg: 'bg-blue-50' },
-          { label: t('proc.statusApproved'),   value: approvedCount,       color: 'text-green-600', bg: 'bg-green-50' },
-          { label: lang('az') ? 'Cəmi Sorğu' : 'Total Requests', value: requests.length, color: 'text-gray-700', bg: 'bg-gray-50' },
+          { label: t('proc.pendingApprovals'), value: pendingCount,    color: 'text-blue-600',  bg: 'bg-blue-50' },
+          { label: t('proc.statusApproved'),   value: approvedCount,   color: 'text-green-600', bg: 'bg-green-50' },
+          { label: lang === 'az' ? 'Cəmi Sorğu' : 'Total Requests', value: requests.length, color: 'text-gray-700', bg: 'bg-gray-50' },
         ].map(card => (
           <div key={card.label} className={`${card.bg} rounded-xl p-4 border border-white`}>
             <p className="text-xs text-gray-500 mb-1">{card.label}</p>
@@ -264,20 +272,16 @@ export default function RequestsClient() {
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div className="flex gap-2 flex-wrap">
           {(['all','draft','submitted','approved','rejected','ordered'] as const).map(s => (
-            <button key={s}
-              onClick={() => setFilterStatus(s)}
+            <button key={s} onClick={() => setFilterStatus(s)}
               className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
                 filterStatus === s ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {s === 'all' ? (t('common.all')) : t(STATUS_KEY[s as PRStatus])}
+              }`}>
+              {s === 'all' ? t('common.all') : t(STATUS_KEY[s as PRStatus])}
             </button>
           ))}
         </div>
-        <button
-          onClick={() => { resetForm(); setShowForm(true) }}
-          className="flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors"
-        >
+        <button onClick={() => { resetForm(); setShowForm(true) }}
+          className="flex items-center gap-2 bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
@@ -351,8 +355,7 @@ export default function RequestsClient() {
                         </>
                       )}
                       {r.status === 'approved' && isManager && (
-                        <button
-                          onClick={() => router.push(`/procurement/orders?pr=${r.id}`)}
+                        <button onClick={() => router.push(`/procurement/orders?pr=${r.id}`)}
                           className="px-2.5 py-1 text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors">
                           {t('proc.createOrder')}
                         </button>
@@ -388,22 +391,10 @@ export default function RequestsClient() {
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
-              {/* Title */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('proc.title')} *</label>
-                <input value={title} onChange={e => setTitle(e.target.value)} placeholder={t('proc.title')}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-              </div>
-              {/* Description */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('common.description')}</label>
-                <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none" />
-              </div>
               {/* Vendor + Priority */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('proc.vendor')}</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('proc.vendor')} *</label>
                   <div className="relative">
                     <select value={vendorId} onChange={e => setVendorId(e.target.value)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm appearance-none pr-8 focus:ring-2 focus:ring-blue-500 outline-none">
@@ -419,7 +410,7 @@ export default function RequestsClient() {
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('proc.priority')}</label>
                   <div className="flex gap-1.5">
                     {(['low','normal','high','urgent'] as PRPriority[]).map(p => (
-                      <button key={p} onClick={() => setPriority(p)}
+                      <button key={p} type="button" onClick={() => setPriority(p)}
                         className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-colors ${
                           priority === p ? PRIORITY_STYLES[p] + ' ring-2 ring-offset-1 ring-current' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                         }`}>
@@ -429,69 +420,53 @@ export default function RequestsClient() {
                   </div>
                 </div>
               </div>
+
               {/* Needed By */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('proc.neededBy')}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('proc.neededBy')} *</label>
                 <input type="date" value={neededBy} onChange={e => setNeededBy(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
               </div>
-              {/* Items */}
+
+              {/* Line Items */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-sm font-medium text-gray-700">{t('inv.lineItems')}</label>
-                  <button onClick={() => setItems(p => [...p, EMPTY_ITEM()])}
+                  <button type="button" onClick={() => setItems(p => [...p, EMPTY_ITEM()])}
                     className="text-xs text-blue-600 hover:text-blue-700 font-medium">
                     + {t('proc.addItem')}
                   </button>
                 </div>
-                <div className="border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="grid grid-cols-[28px_2fr_72px_72px_96px_32px] bg-gray-50 text-xs font-semibold text-gray-500 px-3 py-2 gap-2">
-                    <span title={t('proc.stockProduct')}>
-                      <svg className="w-3.5 h-3.5 text-blue-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                      </svg>
-                    </span>
-                    <span>{t('common.description')}</span>
+                <div className="border border-gray-200 rounded-xl">
+                  <div className="grid grid-cols-[2fr_72px_72px_96px_32px] bg-gray-50 text-xs font-semibold text-gray-500 px-3 py-2 gap-2 rounded-t-xl">
+                    <span>{lang === 'az' ? 'Məhsul / Təsvir' : 'Product / Description'}</span>
                     <span className="text-center">{t('common.quantity')}</span>
                     <span>{t('proc.unit')}</span>
                     <span className="text-right">{t('proc.unitPriceOptional')}</span>
                     <span />
                   </div>
                   {items.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-[28px_2fr_72px_72px_96px_32px] px-3 py-2 gap-2 border-t border-gray-100 items-center">
-                      {/* Stock toggle */}
-                      <div className="flex justify-center">
-                        <input type="checkbox" checked={!!it.is_stock_item}
-                          onChange={e => toggleStockItem(idx, e.target.checked)}
-                          className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 cursor-pointer"
-                          title={t('proc.stockProduct')} />
-                      </div>
-                      {/* Description or product selector */}
-                      {it.is_stock_item ? (
-                        <select value={it.product_id ?? ''}
-                          onChange={e => selectProduct(idx, e.target.value)}
-                          className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full bg-transparent">
-                          <option value="">{t('proc.selectProduct')}</option>
-                          {products.map(p => (
-                            <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input value={it.description} onChange={e => updateItem(idx, 'description', e.target.value)}
-                          placeholder={t('common.description')}
-                          className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full" />
-                      )}
-                      <input type="number" min="0" value={it.quantity} onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
+                    <div key={idx} className="grid grid-cols-[2fr_72px_72px_96px_32px] px-3 py-2 gap-2 border-t border-gray-100 items-center">
+                      <ProductSearchInput
+                        products={productOptions}
+                        selectedId={it.product_id ?? null}
+                        value={it.description}
+                        onChange={text => updateItem(idx, 'description', text)}
+                        onSelect={p => selectProduct(idx, p)}
+                        onClear={() => clearProduct(idx)}
+                        lang={lang}
+                      />
+                      <input type="number" min="0" value={it.quantity}
+                        onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
                         className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full text-center" />
-                      {it.is_stock_item ? (
-                        <span className="text-sm text-gray-500 py-1 truncate">{it.unit || '—'}</span>
-                      ) : (
-                        <input value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} placeholder="ədəd"
-                          className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full" />
-                      )}
-                      <input type="number" min="0" step="0.01" value={it.unit_price} onChange={e => updateItem(idx, 'unit_price', Number(e.target.value))}
+                      <input value={it.unit} onChange={e => updateItem(idx, 'unit', e.target.value)}
+                        placeholder="ədəd"
+                        className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full" />
+                      <input type="number" min="0" step="0.01" value={it.unit_price}
+                        onChange={e => updateItem(idx, 'unit_price', Number(e.target.value))}
                         className="text-sm border-b border-gray-200 focus:border-blue-500 outline-none py-1 w-full text-right" />
-                      <button onClick={() => setItems(p => p.filter((_, i) => i !== idx))} disabled={items.length === 1}
+                      <button type="button" onClick={() => setItems(p => p.filter((_, i) => i !== idx))}
+                        disabled={items.length === 1}
                         className="text-gray-300 hover:text-red-500 disabled:opacity-30 transition-colors">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -500,8 +475,8 @@ export default function RequestsClient() {
                     </div>
                   ))}
                   {total > 0 && (
-                    <div className="grid grid-cols-[28px_2fr_72px_72px_96px_32px] px-3 py-2 bg-gray-50 border-t border-gray-100 text-sm font-semibold">
-                      <span /><span className="col-span-3 text-gray-500">{t('common.total')}</span>
+                    <div className="grid grid-cols-[2fr_72px_72px_96px_32px] px-3 py-2 bg-gray-50 border-t border-gray-100 text-sm font-semibold rounded-b-xl">
+                      <span className="col-span-3 text-gray-500">{t('common.total')}</span>
                       <span className="text-right text-gray-800">₼ {total.toFixed(2)}</span>
                       <span />
                     </div>
@@ -509,13 +484,31 @@ export default function RequestsClient() {
                 </div>
                 <p className="text-xs text-gray-400 mt-1.5 text-right">{t('proc.unitPriceHint')}</p>
               </div>
+
+              {/* Notes — collapsible */}
+              <div>
+                <button type="button" onClick={() => setNotesOpen(o => !o)}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                  <svg className={`w-3.5 h-3.5 transition-transform ${notesOpen ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  {lang === 'az' ? 'Qeydlər' : 'Notes'}{' '}
+                  <span className="text-gray-400">({lang === 'az' ? 'isteğe bağlı' : 'optional'})</span>
+                </button>
+                {notesOpen && (
+                  <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
+                    placeholder={lang === 'az' ? 'Əlavə qeydlər...' : 'Additional notes...'}
+                    className="mt-2 w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+                )}
+              </div>
             </div>
+
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-100">
-              <button onClick={() => { setShowForm(false); resetForm() }}
+              <button type="button" onClick={() => { setShowForm(false); resetForm() }}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                 {t('common.cancel')}
               </button>
-              <button onClick={handleCreate} disabled={saving || !title.trim()}
+              <button type="button" onClick={handleCreate} disabled={saving || !vendorId || !neededBy}
                 className="px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors">
                 {saving ? t('common.saving') : t('proc.newRequest')}
               </button>
@@ -550,5 +543,3 @@ export default function RequestsClient() {
     </div>
   )
 }
-
-function lang(l: string) { return typeof window !== 'undefined' && localStorage.getItem('azfinance-lang') === l }
