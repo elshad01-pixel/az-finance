@@ -1,7 +1,14 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-const FROM   = process.env.EMAIL_FROM ?? 'onboarding@resend.dev'
+function getResend(): Resend {
+  const key = process.env.RESEND_API_KEY
+  if (!key) throw new Error('RESEND_API_KEY not configured')
+  return new Resend(key)
+}
+
+function getFrom(): string {
+  return process.env.EMAIL_FROM ?? 'onboarding@resend.dev'
+}
 
 function template(title: string, body: string): string {
   return `<!DOCTYPE html>
@@ -71,8 +78,8 @@ export async function sendInvoiceEmail(
     ${pdfBase64 ? '<p style="margin:0;font-size:12px;color:#94a3b8;">PDF faktura əlavə olunub. / PDF invoice is attached.</p>' : ''}
   `
 
-  const { data: res, error } = await resend.emails.send({
-    from:    FROM,
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
     to,
     subject: `[AzFinance] Faktura ${data.invoiceNumber} — ${data.amount} / Invoice ${data.invoiceNumber}`,
     html:    template(`Faktura ${data.invoiceNumber}`, body),
@@ -107,8 +114,8 @@ export async function sendInviteEmail(
     <p style="margin:0;font-size:12px;color:#94a3b8;">Bu link yalnız bir dəfə istifadə oluna bilər. / This link can only be used once.</p>
   `
 
-  const { data: res, error } = await resend.emails.send({
-    from:    FROM,
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
     to,
     subject: `[AzFinance] ${data.companyName} — Komandaya Dəvət / Team Invitation`,
     html:    template('Komandaya Dəvət / Team Invitation', body),
@@ -153,8 +160,8 @@ export async function sendPayslipEmail(
     <p style="margin:0;font-size:12px;color:#94a3b8;">Ətraflı məlumat üçün PDF vərəqəyə baxın. / See the PDF for full details.</p>
   `
 
-  const { data: res, error } = await resend.emails.send({
-    from:    FROM,
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
     to,
     subject: `[AzFinance] Maaş Vərəqəsi — ${data.monthName} ${data.year} / Payslip`,
     html:    template('Maaş Vərəqəsi / Payslip', body),
@@ -199,8 +206,8 @@ export async function sendAuditReport(
     <p style="margin:0;font-size:12px;color:#94a3b8;">PDF hesabat əlavə olunub. / Full PDF report is attached.</p>
   `
 
-  const { data: res, error } = await resend.emails.send({
-    from:    FROM,
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
     to,
     subject: `[AzFinance] Aytaç Audit Hesabatı — ${data.score} (${data.grade})`,
     html:    template('Audit Hesabatı', body),
@@ -242,8 +249,8 @@ export async function sendTaxReminder(
     <p style="margin:0;font-size:12px;color:#94a3b8;">AzFinance · Azərbaycan Vergi Məcəlləsinə uyğun xatırlatma sistemi.</p>
   `
 
-  const { data: res, error } = await resend.emails.send({
-    from:    FROM,
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
     to,
     subject: `[AzFinance] Vergi Xatırlatması: ${data.taxType} — ${data.deadline}`,
     html:    template('Vergi Xatırlatması', body),
