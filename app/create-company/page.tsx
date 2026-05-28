@@ -87,14 +87,24 @@ export default function CreateCompanyPage() {
       industry:          (!skipForm && industry) ? industry : null,
     })
 
-    // 4. Reload context (subscription is auto-created by DB trigger)
+    // 4. Seed AZ tax defaults (company_id auto-set by DB trigger)
+    await supabase.from('tax_settings').upsert({
+      tax_regime:         'profit_tax',
+      business_type:      'general',
+      vat_registered:     false,
+      simplified_eligible: false,
+      payroll_sector:     'private_non_oil',
+      employee_count:     1,
+    }, { onConflict: 'user_id' })
+
+    // 5. Reload context (subscription is auto-created by DB trigger)
     await refresh()
     router.push('/')
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim() || !industry) return
     await submit(false)
   }
 
@@ -222,9 +232,12 @@ export default function CreateCompanyPage() {
 
             {/* Industry */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Industry</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Industry <span className="text-red-500">*</span>
+              </label>
               <div className="relative">
                 <select
+                  required
                   value={industry}
                   onChange={e => setIndustry(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-10 text-gray-900"
@@ -241,7 +254,7 @@ export default function CreateCompanyPage() {
 
             <button
               type="submit"
-              disabled={saving || !name.trim()}
+              disabled={saving || !name.trim() || !industry}
               className="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-3 rounded-lg transition-colors shadow-sm disabled:opacity-60 text-sm mt-2"
             >
               {saving ? (

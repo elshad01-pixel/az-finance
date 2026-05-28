@@ -56,9 +56,7 @@ function SignupForm() {
     }
 
     if (data.session) {
-      // Invited users already have a company via CompanyContext auto-accept
-      // Fresh signups need to set up their company first
-      router.push(inviteToken ? '/' : '/create-company')
+      router.push('/create-company')
       router.refresh()
     } else {
       setSuccess('Account created! Check your email for a confirmation link.')

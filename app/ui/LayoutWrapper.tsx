@@ -11,23 +11,23 @@ const AUTH_PATHS = ['/login', '/signup', '/create-company']
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router   = useRouter()
-  const { user, company, loading, needsSetup } = useCompany()
+  const { user, company, loading } = useCompany()
 
   // If authenticated but no company yet → send to setup wizard
   useEffect(() => {
     if (loading) return
     const isPublic = AUTH_PATHS.some(p => pathname.startsWith(p))
-    if (user && needsSetup && !isPublic) {
-      router.push('/create-company')
+    if (user && !company && !isPublic) {
+      router.replace('/create-company')
     }
-  }, [loading, user, needsSetup, pathname, router])
+  }, [loading, user, company, pathname, router])
 
   if (AUTH_PATHS.some(p => pathname.startsWith(p))) {
     return <>{children}</>
   }
 
   // Show blank while loading or redirecting to setup
-  if (loading || (user && needsSetup)) return null
+  if (loading || (user && !company)) return null
 
   return (
     <>
