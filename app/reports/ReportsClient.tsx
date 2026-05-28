@@ -297,18 +297,24 @@ export default function ReportsClient() {
   const prevCollected     = pInv.filter(i => i.status === 'Paid').reduce((s, i) => s + i.amount, 0)
   const prevOutstanding   = pInv.filter(i => i.status === 'Unpaid').reduce((s, i) => s + i.amount, 0)
 
+  // ── COGS from confirmed deliveries (cost of goods SOLD, not purchased) ──────
+  const filteredDeliveries     = deliveries.filter(d =>
+    period === 'all' || (d.delivery_date >= range.from && d.delivery_date <= range.to)
+  )
+  const prevFilteredDeliveries = deliveries.filter(d =>
+    period === 'all' || (d.delivery_date >= prev.from && d.delivery_date <= prev.to)
+  )
+  const totalCogs     = filteredDeliveries.reduce((s, d) => s + d.cogs_amount, 0)
+  const prevTotalCogs = prevFilteredDeliveries.reduce((s, d) => s + d.cogs_amount, 0)
+
+  // Operating expenses — exclude procurement COGS entries (balance-sheet items)
   const catRows = CATEGORIES.map(cat => ({
     cat,
     curr: cExp.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0),
     prev: pExp.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0),
   })).filter(r => r.curr > 0 || r.prev > 0)
 
-  // Split into COGS and operating expenses
-  const cogsRows = catRows.filter(r => r.cat === 'COGS')
   const opexRows = catRows.filter(r => r.cat !== 'COGS')
-
-  const totalCogs     = cogsRows.reduce((s, r) => s + r.curr, 0)
-  const prevTotalCogs = cogsRows.reduce((s, r) => s + r.prev, 0)
   const totalOpEx     = opexRows.reduce((s, r) => s + r.curr, 0)
   const prevTotalOpEx = opexRows.reduce((s, r) => s + r.prev, 0)
   const totalExp      = totalCogs + totalOpEx
@@ -332,10 +338,6 @@ export default function ReportsClient() {
   const tLabel = taxLabel(taxSettings, t)
 
   // ── Margin computations ───────────────────────────────────────────────────
-  const filteredDeliveries = deliveries.filter(d =>
-    period === 'all' || (d.delivery_date >= range.from && d.delivery_date <= range.to)
-  )
-
   const productMap = new Map(products.map(p => [p.id, p]))
 
   const marginMap = new Map<string, MarginRow>()
@@ -437,12 +439,17 @@ export default function ReportsClient() {
           totalInvoiced, collected, outstanding,
           prevTotalInvoiced, prevCollected, prevOutstanding,
         },
-        expenses: {
-          byCategory: catRows.map(r => ({ category: r.cat, amount: r.curr, prevAmount: r.prev })),
-          total:     totalExp,
-          prevTotal: prevTotalExp,
+        cogs: {
+          amount:    totalCogs,
+          prevAmount: prevTotalCogs,
+        },
+        opex: {
+          byCategory: opexRows.map(r => ({ category: r.cat, amount: r.curr, prevAmount: r.prev })),
+          total:      totalOpEx,
+          prevTotal:  prevTotalOpEx,
         },
         profit: {
+          grossProfit, prevGrossProfit,
           gross, taxLabel: tLabel, taxAmount: tax, net,
           prevGross, prevTaxAmount: prevTax, prevNet,
         },
@@ -662,13 +669,14 @@ export default function ReportsClient() {
             <PLRow label={t('rep.collected')}     curr={collected}     prev={prevCollected}     indent />
             <PLRow label={t('rep.outstanding')}   curr={outstanding}   prev={prevOutstanding}   indent />
 
-            {/* COST OF GOODS SOLD */}
+            {/* COST OF GOODS SOLD — from confirmed deliveries */}
             <SectionHead label={t('rep.cogs')} cls="bg-orange-50 border-orange-100 text-orange-700" />
-            {cogsRows.length === 0
+            {totalCogs === 0 && prevTotalCogs === 0
               ? <p className="text-sm text-gray-400 italic px-5 py-3">{t('rep.noCogs')}</p>
-              : cogsRows.map(r => (
-                  <PLRow key={r.cat} label={t('cat.COGS' as TranslationKey)} curr={r.curr} prev={r.prev} indent invert />
-                ))
+              : <PLRow
+                  label={lang === 'az' ? 'Satılmış malların dəyəri (çatdırılmalar)' : 'Cost of Goods Sold (from deliveries)'}
+                  curr={totalCogs} prev={prevTotalCogs} indent invert
+                />
             }
             <PLRow label={t('rep.totalCogs')} curr={totalCogs} prev={prevTotalCogs} bold invert />
 

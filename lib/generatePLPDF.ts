@@ -12,19 +12,25 @@ export interface PLPDFData {
     prevCollected:     number
     prevOutstanding:   number
   }
-  expenses: {
+  cogs: {
+    amount:    number
+    prevAmount: number
+  }
+  opex: {
     byCategory: { category: string; amount: number; prevAmount: number }[]
     total:      number
     prevTotal:  number
   }
   profit: {
-    gross:        number
-    taxLabel:     string
-    taxAmount:    number
-    net:          number
-    prevGross:    number
-    prevTaxAmount: number
-    prevNet:      number
+    grossProfit:     number
+    prevGrossProfit: number
+    gross:           number   // net before tax
+    taxLabel:        string
+    taxAmount:       number
+    net:             number
+    prevGross:       number
+    prevTaxAmount:   number
+    prevNet:         number
   }
 }
 
@@ -79,7 +85,7 @@ export async function generatePLPDF(data: PLPDFData): Promise<void> {
 
   doc.setFontSize(7.5); doc.setTextColor(120, 170, 230)
   doc.text(
-    `Generated: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`,
+    `Generated: ${new Intl.DateTimeFormat('az-AZ').format(new Date())}`,
     MARGIN, 37,
   )
 
@@ -94,7 +100,7 @@ export async function generatePLPDF(data: PLPDFData): Promise<void> {
     doc.text(data.companyName, W - MARGIN, 38, { align: 'right' })
   }
 
-  // ── Table ──────────────────────────────────────────────────────────────────
+  // ── Table helpers ──────────────────────────────────────────────────────────
   const GRAY: [number, number, number]        = [107, 114, 128]
   const GREEN_FILL: [number, number, number]  = [220, 252, 231]
   const GREEN_TEXT: [number, number, number]  = [21,  128, 61 ]
@@ -136,22 +142,35 @@ export async function generatePLPDF(data: PLPDFData): Promise<void> {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: any[][] = [
-    sectionHead('REVENUE',  [239, 246, 255], [30, 58, 138]),
+    // ── REVENUE ────────────────────────────────────────────────────────────
+    sectionHead('REVENUE', [239, 246, 255], [30, 58, 138]),
     dataRow('Total Invoiced',   data.revenue.prevTotalInvoiced, data.revenue.totalInvoiced),
     dataRow('Collected (Paid)', data.revenue.prevCollected,     data.revenue.collected),
     dataRow('Outstanding',      data.revenue.prevOutstanding,   data.revenue.outstanding),
 
-    sectionHead('EXPENSES', [254, 242, 242], [185, 28, 28]),
-    ...(data.expenses.byCategory.length > 0
-      ? data.expenses.byCategory.map(e => dataRow(e.category, e.prevAmount, e.amount))
-      : [[{ content: 'No expenses in this period', colSpan: 3, styles: { textColor: GRAY, fontStyle: 'italic' as const } }]]
+    // ── COST OF GOODS SOLD ─────────────────────────────────────────────────
+    sectionHead('COST OF GOODS SOLD', [255, 237, 213], [154, 52, 18]),
+    ...(data.cogs.amount === 0 && data.cogs.prevAmount === 0
+      ? [[{ content: 'No deliveries in this period', colSpan: 3, styles: { textColor: GRAY, fontStyle: 'italic' as const } }]]
+      : [dataRow('Cost of Goods Sold (deliveries)', data.cogs.prevAmount, data.cogs.amount, true)]
     ),
-    dataRow('Total Expenses', data.expenses.prevTotal, data.expenses.total, true),
 
-    sectionHead('PROFIT',   [240, 253, 244], [21, 128, 61]),
-    hlRow('Gross Profit (Collected − Expenses)', data.profit.prevGross,     data.profit.gross,     data.profit.gross >= 0),
-    dataRow(data.profit.taxLabel,                data.profit.prevTaxAmount, data.profit.taxAmount),
-    hlRow('NET PROFIT AFTER TAX',                data.profit.prevNet,       data.profit.net,       data.profit.net >= 0),
+    // ── GROSS PROFIT ───────────────────────────────────────────────────────
+    hlRow('GROSS PROFIT', data.profit.prevGrossProfit, data.profit.grossProfit, data.profit.grossProfit >= 0),
+
+    // ── OPERATING EXPENSES ─────────────────────────────────────────────────
+    sectionHead('OPERATING EXPENSES', [254, 242, 242], [185, 28, 28]),
+    ...(data.opex.byCategory.length > 0
+      ? data.opex.byCategory.map(e => dataRow(e.category, e.prevAmount, e.amount))
+      : [[{ content: 'No operating expenses in this period', colSpan: 3, styles: { textColor: GRAY, fontStyle: 'italic' as const } }]]
+    ),
+    dataRow('Total Operating Expenses', data.opex.prevTotal, data.opex.total, true),
+
+    // ── NET PROFIT ─────────────────────────────────────────────────────────
+    sectionHead('NET PROFIT', [240, 253, 244], [21, 128, 61]),
+    hlRow('Net Before Tax', data.profit.prevGross, data.profit.gross, data.profit.gross >= 0),
+    dataRow(data.profit.taxLabel, data.profit.prevTaxAmount, data.profit.taxAmount),
+    hlRow('NET PROFIT AFTER TAX', data.profit.prevNet, data.profit.net, data.profit.net >= 0),
   ]
 
   autoTable(doc, {
@@ -186,7 +205,7 @@ export async function generatePLPDF(data: PLPDFData): Promise<void> {
 
   doc.setFontSize(7.5); doc.setFont('Roboto', 'normal'); doc.setTextColor(156, 163, 175)
   doc.text(
-    `AzFinance · Profit & Loss Report · ${new Date().toLocaleDateString('en-GB')}`,
+    `AzFinance · Profit & Loss Report · ${new Intl.DateTimeFormat('az-AZ').format(new Date())}`,
     W / 2, H - 11,
     { align: 'center' },
   )

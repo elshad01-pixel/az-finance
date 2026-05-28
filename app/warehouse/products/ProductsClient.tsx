@@ -21,6 +21,7 @@ interface Product {
   stock_qty:        number
   min_stock_level:  number
   status:           ProductStatus
+  is_for_resale?:   boolean
   sku_manually_set?: boolean
   sku_generated_at?: string | null
 }
@@ -78,6 +79,7 @@ export default function ProductsClient() {
   const [stockQty,     setStockQty]     = useState('')
   const [minStock,     setMinStock]     = useState('')
   const [status,       setStatus]       = useState<ProductStatus>('active')
+  const [isForResale,  setIsForResale]  = useState(true)
 
   const toastTimer   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const productsRef  = useRef<Product[]>([])
@@ -137,6 +139,7 @@ export default function ProductsClient() {
     setName(''); setDescription(''); setCategory('')
     setUnit('əd'); setCostPrice(''); setSalePrice('')
     setStockQty(''); setMinStock(''); setStatus('active')
+    setIsForResale(true)
     setEditingProduct(null); setSaveError(null)
   }
 
@@ -153,7 +156,7 @@ export default function ProductsClient() {
     setCategory(p.category ?? ''); setUnit(p.unit)
     setCostPrice(String(p.cost_price)); setSalePrice(String(p.sale_price))
     setStockQty(String(p.stock_qty)); setMinStock(String(p.min_stock_level))
-    setStatus(p.status); setSaveError(null)
+    setStatus(p.status); setIsForResale(p.is_for_resale ?? true); setSaveError(null)
     setShowModal(true)
   }
 
@@ -182,6 +185,7 @@ export default function ProductsClient() {
       stock_qty:        parseFloat(stockQty)   || 0,
       min_stock_level:  parseFloat(minStock)   || 0,
       status,
+      is_for_resale:    isForResale,
       sku_manually_set: skuManual,
     }
     if (editingProduct) {
@@ -601,6 +605,34 @@ export default function ProductsClient() {
                       {t(s === 'active' ? 'wh.active' : 'wh.inactive')}
                     </button>
                   ))}
+                </div>
+
+                {/* ── For Resale toggle ──────────────────────────────────────── */}
+                <div className="flex items-center justify-between px-3 py-2.5 bg-gray-50 rounded-lg border border-gray-200">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-700">
+                      {lang === 'az' ? 'Məhsul növü' : 'Product Type'}
+                    </p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      {isForResale
+                        ? (lang === 'az' ? 'GR zamanı COGS xərci yaradılır' : 'Creates COGS expense on GR')
+                        : (lang === 'az' ? 'GR zamanı Ofis xərci yaradılır' : 'Creates Office expense on GR')}
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button type="button" onClick={() => setIsForResale(true)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                        isForResale ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                      }`}>
+                      {lang === 'az' ? 'Satış üçün' : 'For Resale'}
+                    </button>
+                    <button type="button" onClick={() => setIsForResale(false)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                        !isForResale ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
+                      }`}>
+                      {lang === 'az' ? 'Daxili istifadə' : 'Internal Use'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
