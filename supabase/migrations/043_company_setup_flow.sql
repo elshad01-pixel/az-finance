@@ -25,4 +25,4 @@ CREATE POLICY "Admins can manage company settings"
 -- Backfill defaults for companies that existed before this migration
 INSERT INTO company_settings (company_id)
 SELECT id FROM companies
-ON CONFLICT (company_id) DO NOTHING;
+WHERE id NOT IN (SELECT company_id FROM company_settings);
