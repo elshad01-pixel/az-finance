@@ -171,6 +171,115 @@ ERP Workflows:
   Gross Margin:    Revenue − COGS, where COGS = FIFO unit cost × delivered qty
 
 ══════════════════════════════════════════════════════
+DEEP AZERBAIJAN TAX LAW KNOWLEDGE
+══════════════════════════════════════════════════════
+
+### ƏDV (VAT) — Vergi Məcəlləsi Maddə 159-177
+RATES:
+- Standard: 18%
+- Zero rate (0%): exports, international transport, diplomatic missions
+- Exempt: medical services, education, financial services, insurance, land sales
+
+BENEFITS & EXEMPTIONS:
+- Small business exemption: turnover < 200,000 AZN
+- Agricultural producers: exempt
+- NGOs: exempt on grant-funded activities
+- Export companies: 0% + VAT refund right
+- SEZ (Xüsusi İqtisadi Zona) companies: exempt
+
+DEADLINES:
+- Monthly return: by 20th of following month
+- Payment: same as return deadline
+- Annual reconciliation: by 31 March
+
+### Mənfəət Vergisi — Maddə 105-125
+RATES:
+- Standard: 20%
+- Small business (simplified): 2% or 8%
+- Oil & gas (PSA): per contract terms
+- Banks & insurance: 20%
+- Non-residents: 10% on Azerbaijan-source income
+
+BENEFITS & EXEMPTIONS:
+- Agricultural income: exempt until 2026
+- SEZ companies: 0% for 7 years
+- Startup exemption: 3 years if registered with Innovation Agency
+- Reinvestment deduction: 50% of reinvested profit
+- R&D deduction: 200% of R&D expenses
+- Disabled employee benefit: double salary deduction
+- New job creation: 50% tax reduction for 3 years
+
+DEDUCTIBLE EXPENSES:
+- All ordinary business expenses
+- Depreciation (straight-line or reducing balance)
+- Interest up to Central Bank rate + 525 basis points
+- Bad debt write-offs (after 3 years)
+- Charity donations up to 10% of taxable profit
+- Advertising up to 2% of revenue
+
+NON-DEDUCTIBLE:
+- Fines and penalties
+- Personal expenses
+- Expenses without supporting documents
+- Dividends paid
+
+DEADLINES:
+- Quarterly advance: by 15th of month after quarter
+  Q1: 15 April, Q2: 15 July, Q3: 15 October
+- Annual return: by 31 March of following year
+- Final payment: by 31 March
+
+### Sadələşdirilmiş Vergi — Maddə 218-232
+WHO QUALIFIES:
+- Annual turnover ≤ 200,000 AZN
+- Not VAT registered
+- Not in excluded activities
+
+RATES:
+- General: 2% of gross revenue
+- Trade/food/public catering: 8%
+- Baku city: +add 0.5% municipal tax
+
+BENEFITS:
+- No separate payroll taxes on owner's salary
+- No CIT filing required
+- Quarterly filing (simpler than CIT)
+
+EXCLUDED (cannot use simplified):
+- Banks, insurance companies
+- Investment funds
+- Audit firms
+- Notaries
+- Gambling
+
+DEADLINES:
+- Quarterly return: by 20th of month after quarter
+- Payment: same deadline
+
+### Gəlir Vergisi (PIT) — Maddə 96-102
+RATES:
+- Up to 8,000 AZN/month: 14%
+- Above 8,000 AZN/month: 25% on excess
+
+BENEFITS & EXEMPTIONS (Maddə 102):
+- Art.102.1: 200 AZN deduction if gross ≤ 2,500 AZN (primary workplace only)
+- Disability benefit: additional 200 AZN deduction
+- War veteran: exempt up to 400 AZN/month
+- National hero: fully exempt
+- Unemployment benefit: exempt
+- Maternity benefit: exempt
+- Scholarship: exempt up to 200 AZN/month
+- Life insurance payments: exempt up to 12,000 AZN/year
+- Interest income: exempt up to 500 AZN/year
+- Lottery winnings: 10% flat rate
+- Rental income (individual): 14% flat
+
+DEADLINES:
+- Monthly withholding by employer: by 20th of following month
+- Individual annual return: by 31 March of following year
+- Final payment: by 31 March
+
+══════════════════════════════════════════════════════
 DATA CORRECTIONS (Migration 030 — applied 2026-05-23)
 ══════════════════════════════════════════════════════
 
