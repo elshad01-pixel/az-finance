@@ -751,6 +751,54 @@ Hər test üçün report_test. Sonra save_report.`,
 Run ID: ${RUN_ID}
 ƏDV həddini, invoice vergi sahələrini, əmək haqqı tutmalarını yoxlayın.
 verify_tax və verify_payroll istifadə edin. Hər test üçün report_test. Sonra save_report.`,
+
+    'tax-settings': `Salam Aytaç! Yalnız TAX SETTINGS DEEP AUDIT aparın. Phase 1–7 keçin.
+
+Run ID: ${RUN_ID}
+Tarix: ${nowAz}
+
+Bu auditdə yalnız vergi parametrlərinin dərinləşdirilmiş yoxlanışını aparın:
+
+1. tax_settings cədvəlini oxuyun — tax_regime, business_type, vat_registered,
+   simplified_eligible, payroll_sector, employee_count sahələrini yoxlayın.
+
+2. ƏDV (VAT) uyğunluğu:
+   - vat_registered=TRUE olarsa: bütün fakturalarda vat_applied=TRUE olmalıdır
+   - vat_registered=FALSE olarsa: fakturalarda vat_amount=0 olmalıdır
+   - Cəmi gəlir ≥ 200,000 AZN isə vat_registered=TRUE olmalıdır (qeydiyyat məcburidir)
+   - Növbəti bəyannamə son tarixi: cari ayın 20-si (aylıq)
+
+3. Vergi rejimi uyğunluğu:
+   - tax_regime='profit_tax' → şirkət CIT (20%) ödəyir, sadələşdirilmiş vergi yox
+   - tax_regime='simplified' → dövriyyə ≤ 200,000 AZN + VAT qeydiyyatsız olmalıdır
+   - tax_regime='exempt' → kənd təsərrüfatı / QHT / SEZ statusunu yoxlayın
+
+4. Sadələşdirilmiş vergi uyğunluğu (əgər simplified_eligible=TRUE):
+   - Dövriyyə 200,000 AZN həddini keçibmi? (VAT qeydiyyatı tələb olunur)
+   - business_type='trade_food' → 8%, 'general' → 2%
+   - Baku şəhəri üçün +0.5% bələdiyyə vergisi nəzərə alınıb?
+
+5. Əmək haqqı sektoru yoxlanışı:
+   - payroll_sector='private_non_oil' → işsizlik sığortası 0.5% (hər tərəf)
+   - payroll_sector='oil_gas' → fərqli dərəcələr tətbiq olunur
+   - employee_count aktual payroll_entries sayı ilə üst-üstə düşürmü?
+
+6. Vergi güzəştləri yoxlanışı:
+   - Startup qeydiyyatı (Innovation Agency) — 3 il azad?
+   - SEZ statusu — 7 il 0% CIT?
+   - Kənd təsərrüfatı gəliri — 2026-a qədər azad?
+   - Əlil işçi — ikiqat əmək haqqı ayırması?
+
+7. Son tarix uyğunluğu:
+   - ƏDV: hər ayın 20-si
+   - CIT avans: rüblük (15 Aprel, 15 İyul, 15 Oktyabr, 15 Yanvar)
+   - PIT tutma: hər ayın 20-si
+   - İllik bəyannamə: 31 Mart
+
+Hər yoxlama üçün report_test çağırın.
+Bütün yoxlamalar bitdikdən sonra save_report ilə hesabat yazın.
+
+YALNIZ Tax Settings Deep Audit. Phase 1–7 keçin.`,
   }
 
   const userMsg = MODULE_FILTER && PHASE_PROMPTS[MODULE_FILTER]
