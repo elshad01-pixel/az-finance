@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useCompany, type Role } from '@/lib/CompanyContext'
 import { useLanguage } from '@/lib/LanguageContext'
+import { logActivity } from '@/lib/activity'
 
 interface Member {
   id:            number
@@ -117,6 +118,7 @@ export default function TeamTab() {
         setInviteEmail('')
         setInviteSuccess(lang === 'az' ? `Dəvət yaradıldı — ${email}` : `Invitation created for ${email}`)
         setInvitations(prev => [data as PendingInvite, ...prev])
+        logActivity({ supabase, action: 'invited', module: 'team', record_label: email, company_id: company?.id })
       } else {
         setInviteError(lang === 'az' ? 'Token yaradılmadı. Migration 018-i yoxlayın.' : 'Token not generated. Check migration 018.')
       }
@@ -134,8 +136,10 @@ export default function TeamTab() {
       : 'Remove this member from the team?')
     if (!ok) return
     setRemoving(memberId)
+    const memberEmail = members.find(m => m.id === memberId)?.invited_email ?? undefined
     await supabase.from('company_members').delete().eq('id', memberId)
     setMembers(prev => prev.filter(m => m.id !== memberId))
+    logActivity({ supabase, action: 'removed', module: 'team', record_label: memberEmail, company_id: company?.id })
     setRemoving(null)
   }
 

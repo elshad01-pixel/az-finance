@@ -433,6 +433,18 @@ const en = {
   'exp.badgePettyCash':        'Petty Cash',
   'exp.badgeBankCharge':       'Bank',
 
+  // ── Activity Log ──────────────────────────────────────────────────────────
+  'nav.activityLog':         'Activity Log',
+  'page.activityLog':        'Activity Log',
+  'act.user':                'User',
+  'act.action':              'Action',
+  'act.module':              'Module',
+  'act.record':              'Record',
+  'act.details':             'Details',
+  'act.noLogs':              'No activity yet.',
+  'act.exportCSV':           'Export CSV',
+  'act.viewAll':             'View all activity',
+
   // ── Billing / Subscription ────────────────────────────────────────────────
   'nav.billing':             'Billing',
   'page.billing':            'Billing & Subscription',
@@ -1159,6 +1171,18 @@ const az: Record<keyof typeof en, string> = {
   'exp.badgeRecurring':        'Dövri',
   'exp.badgePettyCash':        'Kassa',
   'exp.badgeBankCharge':       'Bank',
+
+  // ── Activity Log ──────────────────────────────────────────────────────────
+  'nav.activityLog':         'Fəaliyyət Jurnalı',
+  'page.activityLog':        'Fəaliyyət Jurnalı',
+  'act.user':                'İstifadəçi',
+  'act.action':              'Əməliyyat',
+  'act.module':              'Modul',
+  'act.record':              'Qeyd',
+  'act.details':             'Ətraflı',
+  'act.noLogs':              'Fəaliyyət yoxdur.',
+  'act.exportCSV':           'CSV İxrac',
+  'act.viewAll':             'Hamısına bax',
 
   // ── Billing / Subscription ────────────────────────────────────────────────
   'nav.billing':             'Abunəlik',

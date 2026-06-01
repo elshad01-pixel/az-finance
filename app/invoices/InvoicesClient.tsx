@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import InvoiceDetailModal from './InvoiceDetailModal'
 import { useLanguage } from '@/lib/LanguageContext'
+import { useCompany } from '@/lib/CompanyContext'
+import { logActivity } from '@/lib/activity'
 import type { TranslationKey } from '@/lib/i18n'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -100,6 +102,7 @@ function MenuItem({
 
 export default function InvoicesClient() {
   const { t } = useLanguage()
+  const { company } = useCompany()
 
   // ── Data ──────────────────────────────────────────────────────────────
   const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -264,7 +267,11 @@ export default function InvoicesClient() {
 
   function handleFinalize(inv: Invoice) { setMenu(null); setConfirm({ type: 'finalize', invoice: inv }) }
 
-  async function handleMarkAsPaid(inv: Invoice) { setMenu(null); await updateStatus(inv.id, 'Paid') }
+  async function handleMarkAsPaid(inv: Invoice) {
+    setMenu(null)
+    await updateStatus(inv.id, 'Paid')
+    logActivity({ supabase, action: 'marked_paid', module: 'invoices', record_label: inv.number, company_id: company?.id })
+  }
 
   function handleDelete(inv: Invoice) { setMenu(null); setConfirm({ type: 'delete', invoice: inv }) }
 
@@ -398,7 +405,10 @@ export default function InvoicesClient() {
       await updateStatus(confirm.invoice.id, 'Unpaid')
     } else {
       const { error } = await supabase.from('invoices').delete().eq('id', confirm.invoice.id)
-      if (!error) setInvoices(prev => prev.filter(i => i.id !== confirm.invoice.id))
+      if (!error) {
+        setInvoices(prev => prev.filter(i => i.id !== confirm.invoice.id))
+        logActivity({ supabase, action: 'deleted', module: 'invoices', record_label: confirm.invoice.number, company_id: company?.id })
+      }
     }
     setConfirming(false)
     setConfirm(null)
@@ -538,6 +548,7 @@ export default function InvoicesClient() {
       }
 
       showToast(t('inv.savedOk'), true)
+      logActivity({ supabase, action: 'created', module: 'invoices', record_label: number, company_id: company?.id })
       closeModal()
     }
 

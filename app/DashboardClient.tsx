@@ -29,6 +29,7 @@ interface TaxSettings {
 
 interface ChartPoint   { label: string; revenue: number; expenses: number }
 interface ActivityItem { label: string; amount: string; positive: boolean; date: string }
+interface ActLog { id: string; user_email: string | null; action: string; module: string; record_label: string | null; created_at: string }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -529,7 +530,21 @@ export default function DashboardClient() {
   const [currExpCash,   setCurrExpCash]   = useState(0)
   const [prevExpCash,   setPrevExpCash]   = useState(0)
   const [pendingExps,   setPendingExps]   = useState<Array<{ date: string; description: string; amount: number }>>([])
+  const [actLogs,       setActLogs]       = useState<ActLog[]>([])
 
+  useEffect(() => {
+    async function fetchActLogs() {
+      const { data } = await supabase
+        .from('activity_logs')
+        .select('id, user_email, action, module, record_label, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5)
+      setActLogs((data as ActLog[]) ?? [])
+    }
+    fetchActLogs()
+    const interval = setInterval(fetchActLogs, 30_000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -975,34 +990,42 @@ export default function DashboardClient() {
           </div>
         </div>
 
-        {/* Recent Activity — always last 5 transactions, unfiltered */}
+        {/* Recent Activity — live from activity_logs, refreshes every 30s */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">{t('dash.recentActivity')}</h3>
-          {loading ? (
-            <div className="space-y-3">
-              {Array(5).fill(0).map((_, i) => (
-                <div key={i} className="flex justify-between py-1.5 border-b border-gray-50">
-                  <div className="space-y-1">
-                    <div className="h-3 w-32 bg-gray-200 animate-pulse rounded" />
-                    <div className="h-2 w-16 bg-gray-100 animate-pulse rounded" />
-                  </div>
-                  <div className="h-3 w-16 bg-gray-200 animate-pulse rounded" />
-                </div>
-              ))}
-            </div>
-          ) : activity.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">{t('common.noExpenses')}</p>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-700">{t('dash.recentActivity')}</h3>
+            <Link href="/company-settings" className="text-xs text-blue-600 hover:text-blue-700 font-medium">
+              {lang === 'az' ? 'Hamısına bax →' : 'View all →'}
+            </Link>
+          </div>
+          {actLogs.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">
+              {lang === 'az' ? 'Fəaliyyət yoxdur.' : 'No activity yet.'}
+            </p>
           ) : (
             <ul className="space-y-3">
-              {activity.map((item, i) => (
-                <li key={i} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                  <div className="min-w-0 pr-2">
-                    <p className="text-sm text-gray-700 truncate">{item.label}</p>
-                    <p className="text-xs text-gray-400">{relDate(item.date, lang)}</p>
-                  </div>
-                  <span className={`text-sm font-semibold whitespace-nowrap ${item.positive ? 'text-green-600' : 'text-red-500'}`}>
-                    {item.amount}
+              {actLogs.map(log => (
+                <li key={log.id} className="flex items-start gap-2.5 py-1.5 border-b border-gray-50 last:border-0">
+                  <span className={`mt-0.5 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                    ['created','approved','confirmed','marked_paid','invited'].includes(log.action)
+                      ? 'bg-green-100 text-green-700'
+                      : ['deleted','removed'].includes(log.action)
+                      ? 'bg-red-100 text-red-700'
+                      : ['updated','edited'].includes(log.action)
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {log.action.replace('_', ' ')}
                   </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-gray-700 truncate">
+                      <span className="font-medium">{log.module.replace('_', ' ')}</span>
+                      {log.record_label ? ` · ${log.record_label}` : ''}
+                    </p>
+                    <p className="text-[11px] text-gray-400 truncate">
+                      {log.user_email?.split('@')[0]} · {relDate(log.created_at, lang)}
+                    </p>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
+import { useCompany } from '@/lib/CompanyContext'
+import { logActivity } from '@/lib/activity'
 import { calcPayroll, calcGross, type PayrollSector, type GrossBreakdown, type PayrollResult } from '@/lib/payroll'
 import type { TranslationKey } from '@/lib/i18n'
 import jsPDF from 'jspdf'
@@ -514,6 +516,7 @@ async function generateRunPDF(
 
 export default function PayrollClient() {
   const { t, lang } = useLanguage()
+  const { company } = useCompany()
   const months = lang === 'az' ? MONTHS_AZ : MONTHS_EN
   const now    = new Date()
 
@@ -822,6 +825,7 @@ export default function PayrollClient() {
     }).eq('id', currentRun.id)
 
     showToast(t('pay.approvedOk'), true)
+    logActivity({ supabase, action: 'approved', module: 'payroll', record_label: `${calcMonth}/${calcYear}`, company_id: company?.id })
     setRunSaving(false)
     await loadRun(calcMonth, calcYear)
   }

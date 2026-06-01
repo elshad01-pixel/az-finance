@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
+import { useCompany } from '@/lib/CompanyContext'
+import { logActivity } from '@/lib/activity'
 
 type DelStatus = 'draft' | 'confirmed' | 'cancelled'
 
@@ -57,6 +59,7 @@ function fmtDate(s: string) {
 
 export default function DeliveriesClient() {
   const { t } = useLanguage()
+  const { company } = useCompany()
   const searchParams = useSearchParams()
 
   const [deliveries,   setDeliveries]   = useState<Delivery[]>([])
@@ -170,10 +173,12 @@ export default function DeliveriesClient() {
   }
 
   async function handleConfirmDelivery(id: string) {
+    const delivLabel = deliveries.find(d => d.id === id)?.delivery_number
     const { data, error } = await supabase.rpc('confirm_delivery', { p_delivery_id: id })
     setConfirmDel(null)
     if (!error && data?.ok) {
       showToast(`${t('del.deliveryConfirmed')}. ${t('del.invoiceCreated')}: ${data.invoice_number}`)
+      logActivity({ supabase, action: 'confirmed', module: 'deliveries', record_label: delivLabel, company_id: company?.id })
       load()
     } else {
       showToast(data?.error ?? 'Xəta baş verdi')

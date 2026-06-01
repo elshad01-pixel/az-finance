@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
 import { useCompany } from '@/lib/CompanyContext'
+import { logActivity } from '@/lib/activity'
 import UpgradePrompt from '@/app/ui/UpgradePrompt'
 import ProductSearchInput, { type ProductOption } from '@/app/ui/ProductSearchInput'
 import { generatePOPDF } from '@/lib/generatePOPDF'
@@ -200,7 +201,11 @@ export default function OrdersClient() {
       created_by: user.id,
     })
     if (error) notify('Error: ' + error.message)
-    else { notify(t('proc.orderCreated')); setShowForm(false); resetForm(); load() }
+    else {
+      notify(t('proc.orderCreated'))
+      logActivity({ supabase, action: 'created', module: 'purchase_orders', record_label: numData as string, company_id: company?.id })
+      setShowForm(false); resetForm(); load()
+    }
     setSaving(false)
   }
 

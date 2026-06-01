@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
+import { useCompany } from '@/lib/CompanyContext'
+import { logActivity } from '@/lib/activity'
 import ProductSearchInput, { type ProductOption } from '@/app/ui/ProductSearchInput'
 import type { TranslationKey } from '@/lib/i18n'
 
@@ -66,6 +68,7 @@ const VAT_RATE = 0.18
 
 export default function SalesOrdersClient() {
   const { t, lang } = useLanguage()
+  const { company } = useCompany()
   const router = useRouter()
 
   const [orders,       setOrders]       = useState<SalesOrder[]>([])
@@ -182,6 +185,7 @@ export default function SalesOrdersClient() {
     if (!error) {
       setShowForm(false)
       showToast(t('so.orderCreated'))
+      logActivity({ supabase, action: 'created', module: 'sales_orders', record_label: soNumber, company_id: company?.id })
       load()
     }
   }

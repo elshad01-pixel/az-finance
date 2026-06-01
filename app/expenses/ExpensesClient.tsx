@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
+import { useCompany } from '@/lib/CompanyContext'
+import { logActivity } from '@/lib/activity'
 import type { TranslationKey } from '@/lib/i18n'
 import {
   MAIN_CATEGORIES, CATEGORY_MAP, CATEGORY_STYLES, CATEGORY_DOT,
@@ -95,6 +97,7 @@ function getDateRange(filter: DateFilter): { start: string; end: string } | null
 
 export default function ExpensesClient() {
   const { t, lang } = useLanguage()
+  const { company } = useCompany()
   const router = useRouter()
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -432,7 +435,10 @@ export default function ExpensesClient() {
     } else {
       const { data, error } = await supabase.from('expenses').insert(payload).select().single()
       if (error) { setSaveError(error.message); setSaving(false); return }
-      if (data) setExpenses(prev => [data as Expense, ...prev])
+      if (data) {
+        setExpenses(prev => [data as Expense, ...prev])
+        logActivity({ supabase, action: 'created', module: 'expenses', record_label: (payload as { description?: string }).description, company_id: company?.id })
+      }
     }
     setSaving(false)
     closeModal()
@@ -454,6 +460,9 @@ export default function ExpensesClient() {
       if (!insertRes.error && insertRes.data) return [insertRes.data as Expense, ...updated]
       return updated
     })
+    if (!insertRes.error) {
+      logActivity({ supabase, action: 'marked_paid', module: 'expenses', record_label: exp.description, company_id: company?.id })
+    }
   }
 
   async function markExpensePaid(id: number) {

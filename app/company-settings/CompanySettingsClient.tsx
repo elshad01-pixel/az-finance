@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useCompany } from '@/lib/CompanyContext'
 import { useLanguage } from '@/lib/LanguageContext'
 import TeamTab from './TeamTab'
+import ActivityLogTab from './ActivityLogTab'
 
 interface CompanySettings {
   company_name:    string
@@ -32,10 +33,10 @@ const DEFAULTS: CompanySettings = {
 
 const INPUT = 'w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition'
 
-type Tab = 'company' | 'team'
+type Tab = 'company' | 'team' | 'activity'
 
 export default function CompanySettingsClient() {
-  const { company, isAdmin } = useCompany()
+  const { company, isAdmin, isManager } = useCompany()
   const { lang } = useLanguage()
 
   const [activeTab, setActiveTab] = useState<Tab>('company')
@@ -74,8 +75,9 @@ export default function CompanySettingsClient() {
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'company', label: lang === 'az' ? 'Şirkət' : 'Company' },
+    { id: 'company',  label: lang === 'az' ? 'Şirkət' : 'Company' },
     ...(isAdmin ? [{ id: 'team' as Tab, label: lang === 'az' ? 'Komanda' : 'Team' }] : []),
+    ...((isAdmin || isManager) ? [{ id: 'activity' as Tab, label: lang === 'az' ? 'Fəaliyyət Jurnalı' : 'Activity Log' }] : []),
   ]
 
   if (loading) {
@@ -266,6 +268,9 @@ export default function CompanySettingsClient() {
 
       {/* ── Team tab ─────────────────────────────────────────────── */}
       {activeTab === 'team' && isAdmin && <TeamTab />}
+
+      {/* ── Activity Log tab ─────────────────────────────────────── */}
+      {activeTab === 'activity' && (isAdmin || isManager) && <ActivityLogTab />}
     </div>
   )
 }

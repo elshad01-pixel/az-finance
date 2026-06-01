@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useLanguage } from '@/lib/LanguageContext'
 import { useCompany } from '@/lib/CompanyContext'
+import { logActivity } from '@/lib/activity'
 import UpgradePrompt from '@/app/ui/UpgradePrompt'
 
 interface POItem { description: string; quantity: number; unit_price: number; unit: string; product_id?: string | null; is_stock_item?: boolean }
@@ -157,11 +158,14 @@ export default function ReceiptsClient() {
 
   async function handleConfirm(id: string) {
     if (!confirm(t('proc.confirmReceiptMsg'))) return
+    const grLabel = receipts.find(r => r.id === id)?.receipt_number
     const { data, error } = await supabase.rpc('confirm_goods_receipt', { p_gr_id: id })
     if (error || (data as { error?: string })?.error) {
       notify('Error: ' + (error?.message ?? (data as { error?: string })?.error))
     } else {
-      notify(t('proc.expenseCreated')); load()
+      notify(t('proc.expenseCreated'))
+      logActivity({ supabase, action: 'confirmed', module: 'goods_receipts', record_label: grLabel, company_id: company?.id })
+      load()
     }
   }
 
