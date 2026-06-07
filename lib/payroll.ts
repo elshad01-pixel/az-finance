@@ -108,14 +108,10 @@ export function calcPayroll(
     const health = (g: number) => r2(Math.min(g, 2500) * 0.02 + Math.max(0, g - 2500) * 0.005)
 
     // ── Social Insurance 2026 — new tiered rates + 80% state subsidy (2026–2028) ──
-    // Employee base: first 200 AZN @ 3%, remainder @ 10%
-    // Employer base: first 200 AZN @ 22%, remainder @ 15%
-    // State covers 80% → both employer and employee pay only 20% of their base
-    const empSocialBase   = r2(Math.min(gross, 200) * 0.03 + Math.max(0, gross - 200) * 0.10)
-    const emplrSocialBase = r2(Math.min(gross, 200) * 0.22 + Math.max(0, gross - 200) * 0.15)
-
-    const empSocial       = r2(empSocialBase * 0.20)
-    const emplrSocial     = r2(emplrSocialBase * 0.20)
+    // Employee: first 200 AZN @ 3%, remainder @ 10% — FULL amount, NO subsidy
+    // Employer: first 200 AZN @ 22%, remainder @ 15% — state covers 80%, employer pays 20%
+    const empSocial   = r2(Math.min(gross, 200) * 0.03 + Math.max(0, gross - 200) * 0.10)
+    const emplrSocial = r2((Math.min(gross, 200) * 0.22 + Math.max(0, gross - 200) * 0.15) * 0.20)
 
     const empHealth       = health(gross)
     const empUnemployment = r2(gross * 0.005)

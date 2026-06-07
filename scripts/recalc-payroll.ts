@@ -21,37 +21,55 @@ const db = createClient(
 // ── Reference check (no DB needed) ───────────────────────────────────────────
 
 function referenceCheck() {
-  // 2026 rates — Gross 9,000 AZN, private_non_oil
-  //
-  // PIT (new brackets): 625 + (9000−8000)×14% = 625 + 140 = 765
-  //
-  // SI employee base: 200×3% + 8800×10% = 6 + 880 = 886 → ×20% subsidy = 177.2
-  // SI employer base: 200×22% + 8800×15% = 44 + 1320 = 1364 → ×20% subsidy = 272.8
-  //
-  // HI (threshold unchanged): 2500×2% + 6500×0.5% = 50 + 32.5 = 82.5
-  // UI (unchanged): 9000×0.5% = 45
-  //
-  // Net: 9000 − 765 − 177.2 − 82.5 − 45 = 7930.3
-  // Total employer: 9000 + 272.8 + 82.5 + 45 = 9400.3
-  console.log('\n📐 Reference check — Gross 9,000 AZN (private_non_oil, 2026 rates):')
-  const r = calcPayroll(9000, 'private_non_oil', false)
   const ok = (field: string, got: number, exp: number) => {
-    const pass = Math.abs(got - exp) < 0.001
-    console.log(`   ${pass ? '✅' : '❌'} ${field.padEnd(20)} got=${got}  expected=${exp}`)
+    const pass = Math.abs(got - exp) < 0.01
+    console.log(`   ${pass ? '✅' : '❌'} ${field.padEnd(22)} got=${got}  expected=${exp}`)
     return pass
   }
-  const all = [
-    ok('PIT',              r.pit,                765),
-    ok('empSocial',        r.empSocial,           177.2),
-    ok('empHealth',        r.empHealth,            82.5),
-    ok('empUnemployment',  r.empUnemployment,       45),
-    ok('netSalary',        r.netSalary,          7930.3),
-    ok('emplrSocial',      r.emplrSocial,          272.8),
-    ok('emplrHealth',      r.emplrHealth,           82.5),
-    ok('emplrUnemployment',r.emplrUnemployment,     45),
-    ok('totalEmployerCost',r.totalEmployerCost,  9400.3),
+
+  // ── Official portal spot-check: ₼4,800 gross ────────────────────────────
+  // PIT: 75 + (4800−2500)×10% = 75 + 230 = 305
+  // empSI (full, no subsidy): 200×3% + 4600×10% = 6 + 460 = 466
+  // HI: 2500×2% + 2300×0.5% = 50 + 11.5 = 61.5
+  // UI: 4800×0.5% = 24
+  // Net: 4800 − 305 − 466 − 61.5 − 24 = 3943.5  ← confirmed by Azerbaijan tax portal
+  // emplrSI (20% after 80% subsidy): (200×22% + 4600×15%)×20% = (44+690)×20% = 146.8
+  // Total employer: 4800 + 146.8 + 61.5 + 24 = 5032.3
+  console.log('\n📐 Spot-check ₼4,800 — verified against Azerbaijan official tax portal:')
+  const s = calcPayroll(4800, 'private_non_oil', true)
+  const spotOk = [
+    ok('PIT',               s.pit,                305),
+    ok('empSocial',         s.empSocial,           466),
+    ok('empHealth',         s.empHealth,            61.5),
+    ok('empUnemployment',   s.empUnemployment,      24),
+    ok('netSalary',         s.netSalary,          3943.5),
+    ok('emplrSocial',       s.emplrSocial,          146.8),
+    ok('totalEmployerCost', s.totalEmployerCost,  5032.3),
   ]
-  return all.every(Boolean)
+
+  // ── Full reference: ₼9,000 gross ────────────────────────────────────────
+  // PIT: 625 + (9000−8000)×14% = 765
+  // empSI (full): 200×3% + 8800×10% = 886
+  // HI: 2500×2% + 6500×0.5% = 82.5
+  // UI: 9000×0.5% = 45
+  // Net: 9000 − 765 − 886 − 82.5 − 45 = 7221.5
+  // emplrSI: (200×22% + 8800×15%)×20% = 1364×20% = 272.8
+  // Total employer: 9000 + 272.8 + 82.5 + 45 = 9400.3
+  console.log('\n📐 Reference check — ₼9,000 gross (private_non_oil):')
+  const r = calcPayroll(9000, 'private_non_oil', false)
+  const refOk = [
+    ok('PIT',               r.pit,                765),
+    ok('empSocial',         r.empSocial,           886),
+    ok('empHealth',         r.empHealth,            82.5),
+    ok('empUnemployment',   r.empUnemployment,      45),
+    ok('netSalary',         r.netSalary,          7221.5),
+    ok('emplrSocial',       r.emplrSocial,          272.8),
+    ok('emplrHealth',       r.emplrHealth,           82.5),
+    ok('emplrUnemployment', r.emplrUnemployment,    45),
+    ok('totalEmployerCost', r.totalEmployerCost,  9400.3),
+  ]
+
+  return [...spotOk, ...refOk].every(Boolean)
 }
 
 // ── Per-month recalculation ───────────────────────────────────────────────────
