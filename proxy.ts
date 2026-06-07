@@ -43,7 +43,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(loginUrl)
   }
 
-  if (session && isPublicPath) {
+  // Redirect authenticated users away from login/signup — but NOT /create-company.
+  // New users with a session still need to reach /create-company to set up their workspace.
+  const isLoginOrSignup = pathname.startsWith('/login') || pathname.startsWith('/signup')
+  if (session && isLoginOrSignup) {
     const dashUrl = request.nextUrl.clone()
     dashUrl.pathname = '/'
     return NextResponse.redirect(dashUrl)

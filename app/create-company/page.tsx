@@ -5,33 +5,38 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useCompany } from '@/lib/CompanyContext'
 
-const INDUSTRIES = ['Retail', 'Services', 'Manufacturing', 'Hospitality', 'Technology', 'Healthcare', 'Other']
-
-const CURRENCIES = [
-  { value: 'AZN', label: 'AZN' },
-  { value: 'USD', label: 'USD' },
-  { value: 'EUR', label: 'EUR' },
-  { value: 'TRY', label: 'TRY' },
+const INDUSTRIES = [
+  'Retail', 'Services', 'Manufacturing',
+  'Construction', 'Food & Beverage', 'IT', 'Other',
 ]
+
+const TAX_REGIMES = [
+  { value: 'simplified',  label: 'Simplified Tax',  desc: '2% of revenue' },
+  { value: 'profit_tax',  label: 'Profit Tax',       desc: '20% of net profit' },
+  { value: 'income_tax',  label: 'Income Tax',       desc: 'Personal income tax' },
+] as const
+
+type TaxRegime = (typeof TAX_REGIMES)[number]['value']
 
 export default function CreateCompanyPage() {
   const router = useRouter()
   const { user, company, loading: ctxLoading, refresh } = useCompany()
 
-  const [name,     setName]     = useState('')
-  const [taxId,    setTaxId]    = useState('')
-  const [currency, setCurrency] = useState('AZN')
-  const [method,   setMethod]   = useState<'accrual' | 'cash'>('accrual')
-  const [industry, setIndustry] = useState('')
-  const [saving,   setSaving]   = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
+  const [name,         setName]         = useState('')
+  const [taxId,        setTaxId]        = useState('')
+  const [industry,     setIndustry]     = useState('')
+  const [taxRegime,    setTaxRegime]    = useState<TaxRegime>('profit_tax')
+  const [vatRegistered, setVatRegistered] = useState(false)
+  const [method,       setMethod]       = useState<'accrual' | 'cash'>('accrual')
+  const [saving,       setSaving]       = useState(false)
+  const [error,        setError]        = useState<string | null>(null)
 
   // Already set up → go to dashboard
   useEffect(() => {
     if (!ctxLoading && company) router.replace('/')
   }, [ctxLoading, company, router])
 
-  // Not authenticated → middleware should have caught this, but guard anyway
+  // Not authenticated → guard
   useEffect(() => {
     if (!ctxLoading && !user) router.replace('/login')
   }, [ctxLoading, user, router])
@@ -62,7 +67,7 @@ export default function CreateCompanyPage() {
       return
     }
 
-    // 2. Make user an admin member
+    // 2. Make user admin member
     const { error: memErr } = await supabase
       .from('company_members')
       .insert({
@@ -79,25 +84,26 @@ export default function CreateCompanyPage() {
       return
     }
 
-    // 3. Save company settings
+    // 3. Company settings
     await supabase.from('company_settings').insert({
       company_id:        comp.id,
-      currency:          skipForm ? 'AZN' : currency,
+      currency:          'AZN',
       accounting_method: skipForm ? 'accrual' : method,
       industry:          (!skipForm && industry) ? industry : null,
     })
 
-    // 4. Seed AZ tax defaults (company_id auto-set by DB trigger)
-    await supabase.from('tax_settings').upsert({
-      tax_regime:         'profit_tax',
-      business_type:      'general',
-      vat_registered:     false,
+    // 4. Tax settings — keyed on company_id for multi-tenant
+    await supabase.from('tax_settings').insert({
+      company_id:          comp.id,
+      tax_regime:          skipForm ? 'profit_tax' : taxRegime,
+      business_type:       'general',
+      vat_registered:      skipForm ? false : vatRegistered,
       simplified_eligible: false,
-      payroll_sector:     'private_non_oil',
-      employee_count:     1,
-    }, { onConflict: 'user_id' })
+      payroll_sector:      'private_non_oil',
+      employee_count:      1,
+    })
 
-    // 5. Reload context (subscription is auto-created by DB trigger)
+    // 5. Reload context (subscription auto-created by DB trigger)
     await refresh()
     router.push('/')
   }
@@ -108,7 +114,7 @@ export default function CreateCompanyPage() {
     await submit(false)
   }
 
-  // Show spinner while context loads or while redirecting away
+  // Spinner while context loads or while redirecting
   if (ctxLoading || (!ctxLoading && (company || !user))) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-950 via-blue-900 to-blue-800">
@@ -173,11 +179,80 @@ export default function CreateCompanyPage() {
               />
             </div>
 
+            {/* Industry */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Industry <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <select
+                  required
+                  value={industry}
+                  onChange={e => setIndustry(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-10 text-gray-900"
+                >
+                  <option value="">Select industry…</option>
+                  {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Tax Regime */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Tax Regime <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                {TAX_REGIMES.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setTaxRegime(opt.value)}
+                    className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 text-left transition-all ${
+                      taxRegime === opt.value
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300 bg-white'
+                    }`}
+                  >
+                    <span className={`text-sm font-semibold ${taxRegime === opt.value ? 'text-blue-700' : 'text-gray-700'}`}>
+                      {opt.label}
+                    </span>
+                    <span className="text-xs text-gray-400">{opt.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* VAT Registered */}
+            <div className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl border border-gray-200">
+              <div>
+                <p className="text-sm font-medium text-gray-700">VAT Registered</p>
+                <p className="text-xs text-gray-400 mt-0.5">ƏDV qeydiyyatı · 18% on sales</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={vatRegistered}
+                onClick={() => setVatRegistered(v => !v)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                  vatRegistered ? 'bg-blue-600' : 'bg-gray-300'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                  vatRegistered ? 'translate-x-6' : 'translate-x-1'
+                }`} />
+              </button>
+            </div>
+
             {/* VÖEN / Tax ID */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">
                 VÖEN / Tax ID
-                <span className="ml-1.5 text-xs text-gray-400 font-normal">optional, recommended</span>
+                <span className="ml-1.5 text-xs text-gray-400 font-normal">optional</span>
               </label>
               <input
                 type="text"
@@ -186,24 +261,6 @@ export default function CreateCompanyPage() {
                 placeholder="1234567890"
                 className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               />
-            </div>
-
-            {/* Currency */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Currency</label>
-              <div className="grid grid-cols-4 gap-2">
-                {CURRENCIES.map(c => (
-                  <button key={c.value} type="button"
-                    onClick={() => setCurrency(c.value)}
-                    className={`py-2.5 rounded-lg text-sm font-semibold border transition-colors ${
-                      currency === c.value
-                        ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
-                    }`}>
-                    {c.value}
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* Accounting Method */}
@@ -230,26 +287,15 @@ export default function CreateCompanyPage() {
               </div>
             </div>
 
-            {/* Industry */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Industry <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  required
-                  value={industry}
-                  onChange={e => setIndustry(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm bg-white appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition pr-10 text-gray-900"
-                >
-                  <option value="">Select industry…</option>
-                  {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
-                </select>
-                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
-                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
+            {/* Currency — locked to AZN */}
+            <div className="flex items-center justify-between py-3 px-4 bg-gray-50 rounded-xl border border-gray-200">
+              <div>
+                <p className="text-sm font-medium text-gray-700">Currency</p>
+                <p className="text-xs text-gray-400 mt-0.5">Azerbaijan Manat</p>
               </div>
+              <span className="text-sm font-bold text-gray-900 bg-white border border-gray-200 px-3 py-1 rounded-lg">
+                ₼ AZN
+              </span>
             </div>
 
             <button
