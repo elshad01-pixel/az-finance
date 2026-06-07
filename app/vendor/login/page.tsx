@@ -25,6 +25,34 @@ export default function VendorLoginPage() {
       return
     }
 
+    // Check vendor_portal_access — only active records are allowed in
+    const { data: access } = await supabase
+      .from('vendor_portal_access')
+      .select('id, status')
+      .eq('email', email.toLowerCase().trim())
+      .maybeSingle()
+
+    if (!access) {
+      await supabase.auth.signOut()
+      setError('Access denied. Contact your supplier to request portal access.')
+      setLoading(false)
+      return
+    }
+
+    if (access.status === 'pending') {
+      await supabase.auth.signOut()
+      setError('Your access is pending activation. Contact your supplier to confirm your invitation.')
+      setLoading(false)
+      return
+    }
+
+    if (access.status === 'suspended') {
+      await supabase.auth.signOut()
+      setError('Your portal access has been suspended. Contact your supplier.')
+      setLoading(false)
+      return
+    }
+
     router.push('/vendor/dashboard')
   }
 

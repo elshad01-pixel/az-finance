@@ -79,7 +79,8 @@ export async function POST(req: NextRequest) {
   const emailTo      = email.toLowerCase().trim()
   const companyName  = company?.name ?? 'Your buyer'
   const vendorName   = vendor?.name ?? emailTo
-  const appUrl       = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  // Use request origin so the link works on any env (localhost:3001, vercel, etc.)
+  const appUrl       = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin
   const portalUrl    = `${appUrl}/vendor/login`
   const fromAddress  = 'AzFinance <onboarding@resend.dev>'
 
