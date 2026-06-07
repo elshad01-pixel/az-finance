@@ -78,6 +78,11 @@ ALTER TABLE vendor_portal_access ENABLE ROW LEVEL SECURITY;
 ALTER TABLE vendor_invoices      ENABLE ROW LEVEL SECURITY;
 
 -- Company staff see their own company's records
+DROP POLICY IF EXISTS "company_vendor_access"   ON vendor_portal_access;
+DROP POLICY IF EXISTS "company_vendor_invoices" ON vendor_invoices;
+DROP POLICY IF EXISTS "vendor_invoice_upload"   ON storage.objects;
+DROP POLICY IF EXISTS "vendor_invoice_read"     ON storage.objects;
+
 CREATE POLICY "company_vendor_access" ON vendor_portal_access
   FOR ALL TO authenticated
   USING (company_id = get_my_company_id());
