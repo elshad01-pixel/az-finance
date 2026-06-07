@@ -19,7 +19,7 @@ const CROSS = (
   </svg>
 )
 
-const FEATURE_ROWS: { key: string; labelKey: TranslationKey; label: string; plans: Package[] }[] = [
+const FEATURE_ROWS: { key: string; labelKey: TranslationKey; label: string; plans: Package[]; comingSoon?: true }[] = [
   { key: 'dashboard',         labelKey: 'billing.featDashboard',    label: 'Dashboard & Reports',      plans: ['light','mid','enterprise'] },
   { key: 'invoices',          labelKey: 'billing.featInvoices',     label: 'Invoices & Clients',        plans: ['light','mid','enterprise'] },
   { key: 'expenses',          labelKey: 'billing.featExpenses',     label: 'Expenses & Vendors',        plans: ['light','mid','enterprise'] },
@@ -27,10 +27,10 @@ const FEATURE_ROWS: { key: string; labelKey: TranslationKey; label: string; plan
   { key: 'payroll',           labelKey: 'billing.featPayroll',      label: 'Payroll',                   plans: ['light','mid','enterprise'] },
   { key: 'purchase_orders',   labelKey: 'billing.featPO',           label: 'Purchase Orders',           plans: ['mid','enterprise'] },
   { key: 'inventory_basic',   labelKey: 'billing.featInventory',    label: 'Inventory',                 plans: ['mid','enterprise'] },
-  { key: 'vendor_portal',     labelKey: 'billing.featVendorPortal', label: 'Vendor Portal',             plans: ['enterprise'] },
+  { key: 'vendor_portal',     labelKey: 'billing.featVendorPortal', label: 'Vendor Portal',             plans: ['enterprise'], comingSoon: true },
   { key: 'inventory_advanced',labelKey: 'billing.featAdvInv',       label: 'Advanced Inventory',        plans: ['enterprise'] },
-  { key: 'multi_company',     labelKey: 'billing.featMultiCo',      label: 'Multi-company',             plans: ['enterprise'] },
-  { key: 'api_access',        labelKey: 'billing.featApi',          label: 'API Access',                plans: ['enterprise'] },
+  { key: 'multi_company',     labelKey: 'billing.featMultiCo',      label: 'Multi-company',             plans: ['enterprise'], comingSoon: true },
+  { key: 'api_access',        labelKey: 'billing.featApi',          label: 'API Access',                plans: ['enterprise'], comingSoon: true },
 ]
 
 const PACKAGES: Package[] = ['light', 'mid', 'enterprise']
@@ -162,6 +162,11 @@ export default function BillingPage() {
                 >
                   <td className="px-6 py-3 text-sm text-gray-700 dark:text-gray-300 font-medium">
                     {t(row.labelKey)}
+                    {row.comingSoon && (
+                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full ml-2">
+                        Coming Soon
+                      </span>
+                    )}
                   </td>
                   {PACKAGES.map((pkg) => (
                     <td key={pkg} className="px-4 py-3 text-center">
@@ -175,6 +180,9 @@ export default function BillingPage() {
             </tbody>
           </table>
         </div>
+        <p className="px-6 py-3 text-xs text-gray-400 border-t border-gray-100 dark:border-gray-700">
+          * Some Enterprise features are currently in development and will be released in Q3 2026.
+        </p>
       </div>
 
       {/* ── Upgrade contact ───────────────────────────────────────── */}

@@ -406,6 +406,8 @@ async function generatePayslipPDF(
   doc.setTextColor(...gray)
   doc.text('AzFinance · ' + new Intl.DateTimeFormat('az-AZ').format(new Date()), M, 280)
   doc.text(`${lang === 'az' ? 'Dövr' : 'Period'}: ${monthName} ${year}`, W - M, 280, { align: 'right' })
+  doc.setFontSize(6)
+  doc.text('Tax rates should be verified for current year with a qualified accountant.', M, 286)
 
   if (mode === 'base64') {
     return doc.output('datauristring').split(',')[1]
@@ -508,6 +510,12 @@ async function generateRunPDF(
     columnStyles: { 0: { halign: 'left' }, 1: { halign: 'left' }, 11: { halign: 'center' } },
     footStyles:  { fillColor: [243,244,246], fontStyle: 'bold', fontSize: 6 },
   })
+
+  const pageH = doc.internal.pageSize.getHeight()
+  doc.setFontSize(6)
+  doc.setFont('Roboto', 'normal')
+  doc.setTextColor(150, 150, 150)
+  doc.text('Tax rates should be verified for current year with a qualified accountant.', 10, pageH - 5)
 
   doc.save(`payroll_${year}_${String(entries[0]?.run_id ?? 0).padStart(2,'0')}.pdf`)
 }
@@ -937,6 +945,15 @@ export default function PayrollClient() {
 
   return (
     <div>
+      {/* Disclaimer */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
+        <span className="text-amber-600 shrink-0">⚠️</span>
+        <p className="text-sm text-amber-800">
+          Əmək haqqı vergi dərəcələri 2026-cı il üçün göstərilir. Hesablamalar aparılmazdan əvvəl mühasibinizlə yoxlayın.{' '}
+          <span className="text-xs opacity-70">(Payroll tax rates shown for 2026. Please verify with your accountant before processing.)</span>
+        </p>
+      </div>
+
       {/* Header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
