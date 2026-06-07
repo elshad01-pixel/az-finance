@@ -953,11 +953,8 @@ export default function PayrollClient() {
           <p className="text-xs text-amber-700">
             <span className="font-semibold">GV (PIT):</span> ₼0–2,500 → 3% · ₼2,501–8,000 → ₼75 + 10% · ₼8,001+ → ₼625 + 14% · Art.102 güzəşt ləğv edildi
           </p>
-          <p className="text-xs text-amber-700">
-            <span className="font-semibold">Sosial Sığorta:</span> İşçi — ilk ₼200 × 3% + qalıq × 10%, sonra 80% dövlət subsidiyası (20% ödənilir) · İşəgötürən — ilk ₼200 × 22% + qalıq × 15%, sonra 80% subsidiya
-          </p>
           <p className="text-xs text-amber-600 opacity-80">
-            (2026–2028 state subsidy: 80% of social insurance contributions covered. Verify rates with a qualified accountant before processing.)
+            Verify rates with a qualified accountant before processing.
           </p>
         </div>
       </div>
