@@ -87,34 +87,43 @@ export interface PayrollResult {
 export function calcPayroll(
   gross: number,
   sector: PayrollSector,
-  isMainWorkplace: boolean,
+  isMainWorkplace: boolean,  // unused in 2026 private_non_oil (Art.102 replaced by new brackets)
 ): PayrollResult {
   const r2 = (n: number) => Math.round(n * 100) / 100
 
   if (sector === 'private_non_oil') {
-    // Art. 102 Vergi Məcəlləsi: 200 AZN aylıq güzəşt — əsas iş yeri, gross ≤ 2,500
-    const pitDeduction = isMainWorkplace && gross <= 2500 ? 200 : 0
-    const taxable = Math.max(0, gross - pitDeduction)
+    // ── PIT 2026 (VM Art.101) — new progressive brackets, Art.102 deduction abolished ──
+    // 0–2,500: 3%   |   2,501–8,000: ₼75 + 10%   |   8,001+: ₼625 + 14%
+    const pitDeduction = 0  // Art.102 200 AZN exemption replaced by the new bracket structure
+    let pit: number
+    if (gross <= 2500) {
+      pit = r2(gross * 0.03)
+    } else if (gross <= 8000) {
+      pit = r2(75 + (gross - 2500) * 0.10)
+    } else {
+      pit = r2(625 + (gross - 8000) * 0.14)
+    }
 
-    // PIT — Azerbaijan law: 14% up to 8,000 AZN; 25% on excess
-    const pit = taxable <= 8000
-      ? r2(taxable * 0.14)
-      : r2(1120 + (taxable - 8000) * 0.25)
-
-    // Health 2026: 2% on gross ≤ 2,500 + 0.5% on gross > 2,500 (employee AND employer)
+    // Health 2026: 2% on gross ≤ 2,500 + 0.5% on gross > 2,500 (threshold unverified for 2026 — keeping 2,500)
     const health = (g: number) => r2(Math.min(g, 2500) * 0.02 + Math.max(0, g - 2500) * 0.005)
 
-    // Employee: SI 3%, HI bracket, UI 0.5%
-    const empSocial       = r2(gross * 0.03)
+    // ── Social Insurance 2026 — new tiered rates + 80% state subsidy (2026–2028) ──
+    // Employee base: first 200 AZN @ 3%, remainder @ 10%
+    // Employer base: first 200 AZN @ 22%, remainder @ 15%
+    // State covers 80% → both employer and employee pay only 20% of their base
+    const empSocialBase   = r2(Math.min(gross, 200) * 0.03 + Math.max(0, gross - 200) * 0.10)
+    const emplrSocialBase = r2(Math.min(gross, 200) * 0.22 + Math.max(0, gross - 200) * 0.15)
+
+    const empSocial       = r2(empSocialBase * 0.20)
+    const emplrSocial     = r2(emplrSocialBase * 0.20)
+
     const empHealth       = health(gross)
     const empUnemployment = r2(gross * 0.005)
 
     const totalEmpDeductions = r2(pit + empSocial + empHealth + empUnemployment)
     const netSalary          = r2(gross - totalEmpDeductions)
 
-    // Employer: SI 22%, HI same bracket as employee, UI 0.5%
-    const emplrSocial      = r2(gross * 0.22)
-    const emplrHealth      = empHealth
+    const emplrHealth       = empHealth
     const emplrUnemployment = r2(gross * 0.005)
     const totalEmployerCost = r2(gross + emplrSocial + emplrHealth + emplrUnemployment)
 
@@ -125,12 +134,10 @@ export function calcPayroll(
     }
   }
 
-  // ── Oil/gas & public sector ────────────────────────────────────────────
-  // No monthly deduction, no health/unemployment insurance for employee
+  // ── Oil/gas & public sector — rates unchanged for 2026 ────────────────
   const pitDeduction = 0
   const taxable = gross
 
-  // PIT — same progressive brackets as private sector
   const pit = taxable <= 8000
     ? r2(taxable * 0.14)
     : r2(1120 + (taxable - 8000) * 0.25)

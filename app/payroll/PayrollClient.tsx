@@ -948,10 +948,18 @@ export default function PayrollClient() {
       {/* Disclaimer */}
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
         <span className="text-amber-600 shrink-0">⚠️</span>
-        <p className="text-sm text-amber-800">
-          Əmək haqqı vergi dərəcələri 2026-cı il üçün göstərilir. Hesablamalar aparılmazdan əvvəl mühasibinizlə yoxlayın.{' '}
-          <span className="text-xs opacity-70">(Payroll tax rates shown for 2026. Please verify with your accountant before processing.)</span>
-        </p>
+        <div className="text-sm text-amber-800 space-y-1">
+          <p className="font-medium">2026 Vergi Dərəcələri — Özəl Qeyri-Neft Sektoru</p>
+          <p className="text-xs text-amber-700">
+            <span className="font-semibold">GV (PIT):</span> ₼0–2,500 → 3% · ₼2,501–8,000 → ₼75 + 10% · ₼8,001+ → ₼625 + 14% · Art.102 güzəşt ləğv edildi
+          </p>
+          <p className="text-xs text-amber-700">
+            <span className="font-semibold">Sosial Sığorta:</span> İşçi — ilk ₼200 × 3% + qalıq × 10%, sonra 80% dövlət subsidiyası (20% ödənilir) · İşəgötürən — ilk ₼200 × 22% + qalıq × 15%, sonra 80% subsidiya
+          </p>
+          <p className="text-xs text-amber-600 opacity-80">
+            (2026–2028 state subsidy: 80% of social insurance contributions covered. Verify rates with a qualified accountant before processing.)
+          </p>
+        </div>
       </div>
 
       {/* Header */}

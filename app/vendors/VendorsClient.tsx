@@ -24,6 +24,12 @@ interface ExpenseSummary {
   date:      string
 }
 
+interface PortalAccess {
+  vendor_id: number
+  email:     string
+  status:    'pending' | 'active' | 'suspended'
+}
+
 type VendorCategory = 'office' | 'utility' | 'it' | 'transport' | 'marketing' | 'professional' | 'other'
 
 const CAT_KEYS: Record<VendorCategory, TranslationKey> = {
@@ -59,16 +65,17 @@ type FormData = typeof EMPTY_FORM
 export default function VendorsClient() {
   const { t, lang } = useLanguage()
 
-  const [vendors,   setVendors]   = useState<Vendor[]>([])
-  const [expenses,  setExpenses]  = useState<ExpenseSummary[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [form,      setForm]      = useState<FormData>(EMPTY_FORM)
-  const [saving,    setSaving]    = useState(false)
-  const [search,    setSearch]    = useState('')
+  const [vendors,         setVendors]         = useState<Vendor[]>([])
+  const [expenses,        setExpenses]        = useState<ExpenseSummary[]>([])
+  const [portalAccess,    setPortalAccess]    = useState<PortalAccess[]>([])
+  const [pendingInvoices, setPendingInvoices] = useState(0)
+  const [loading,         setLoading]         = useState(true)
+  const [showModal,       setShowModal]       = useState(false)
+  const [editingId,       setEditingId]       = useState<number | null>(null)
+  const [form,            setForm]            = useState<FormData>(EMPTY_FORM)
+  const [saving,          setSaving]          = useState(false)
+  const [search,          setSearch]          = useState('')
 
-  // Vendor portal invite state
   const [inviteVendor,  setInviteVendor]  = useState<Vendor | null>(null)
   const [inviteEmail,   setInviteEmail]   = useState('')
   const [inviteSaving,  setInviteSaving]  = useState(false)
@@ -81,9 +88,13 @@ export default function VendorsClient() {
     Promise.all([
       supabase.from('vendors').select('*').order('name'),
       supabase.from('expenses').select('vendor_id, amount, date').not('vendor_id', 'is', null),
-    ]).then(([vRes, eRes]) => {
+      supabase.from('vendor_portal_access').select('vendor_id, email, status'),
+      supabase.from('vendor_invoices').select('id', { count: 'exact', head: true }).in('status', ['submitted', 'under_review']),
+    ]).then(([vRes, eRes, paRes, viRes]) => {
       setVendors((vRes.data as Vendor[]) ?? [])
       setExpenses((eRes.data as ExpenseSummary[]) ?? [])
+      setPortalAccess((paRes.data as PortalAccess[]) ?? [])
+      setPendingInvoices(viRes.count ?? 0)
       setLoading(false)
     })
   }, [])
@@ -99,6 +110,14 @@ export default function VendorsClient() {
     const total  = linked.reduce((s, e) => s + e.amount, 0)
     const last   = linked.reduce((d, e) => (e.date > d ? e.date : d), '')
     return { total, last }
+  }
+
+  function getPortalStatus(vendorId: number): 'active' | 'pending' | 'suspended' | null {
+    const entries = portalAccess.filter(a => a.vendor_id === vendorId)
+    if (entries.some(e => e.status === 'active'))    return 'active'
+    if (entries.some(e => e.status === 'pending'))   return 'pending'
+    if (entries.some(e => e.status === 'suspended')) return 'suspended'
+    return null
   }
 
   function formatDate(d: string) {
@@ -150,8 +169,15 @@ export default function VendorsClient() {
         body: JSON.stringify({ vendor_id: inviteVendor.id, email: inviteEmail.trim() }),
       })
       const json = await res.json()
-      if (!json.ok) { setInviteError(json.error ?? 'Failed to send invite.'); }
-      else          { setInviteSuccess(true) }
+      if (!json.ok) {
+        setInviteError(json.error ?? 'Failed to send invite.')
+      } else {
+        setInviteSuccess(true)
+        setPortalAccess(prev => {
+          const without = prev.filter(a => !(a.vendor_id === inviteVendor.id && a.email === inviteEmail.trim()))
+          return [...without, { vendor_id: inviteVendor.id, email: inviteEmail.trim(), status: 'pending' }]
+        })
+      }
     } catch {
       setInviteError('Network error. Please try again.')
     }
@@ -191,6 +217,9 @@ export default function VendorsClient() {
     return !q || v.name.toLowerCase().includes(q) || (v.voen ?? '').includes(q) || (v.email ?? '').toLowerCase().includes(q)
   })
 
+  const totalSpent      = expenses.reduce((s, e) => s + e.amount, 0)
+  const activePortalIds = new Set(portalAccess.filter(a => a.status === 'active').map(a => a.vendor_id))
+
   if (loading) {
     return (
       <div className="space-y-4 animate-pulse">
@@ -198,20 +227,23 @@ export default function VendorsClient() {
           <div className="h-8 bg-gray-100 rounded w-40" />
           <div className="h-10 bg-gray-100 rounded-lg w-36" />
         </div>
+        <div className="grid grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-gray-100 rounded-xl" />)}
+        </div>
         <div className="h-96 bg-gray-100 rounded-xl" />
       </div>
     )
   }
 
   return (
-    <div>
+    <div className="w-full">
 
       {/* ── Header ── */}
       <div className="mb-5 flex items-start justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">{t('nav.vendors')}</h2>
           <p className="text-gray-500 text-sm mt-1">
-            {filtered.length} {lang === 'az' ? 'təchizatçı' : filtered.length !== 1 ? 'vendors' : 'vendor'}
+            {vendors.length} {lang === 'az' ? 'təchizatçı' : vendors.length !== 1 ? 'vendors' : 'vendor'}
           </p>
         </div>
         <button
@@ -223,6 +255,34 @@ export default function VendorsClient() {
           </svg>
           {t('ven.addVendor')}
         </button>
+      </div>
+
+      {/* ── Summary Cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+            {lang === 'az' ? 'Cəmi Təchizatçı' : 'Total Vendors'}
+          </p>
+          <p className="text-2xl font-bold text-gray-900">{vendors.length}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+            {lang === 'az' ? 'Aktiv Portal İstifadəçiləri' : 'Active Portal Users'}
+          </p>
+          <p className="text-2xl font-bold text-teal-600">{activePortalIds.size}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+            {lang === 'az' ? 'Gözləyən Fakturalar' : 'Pending Invoices'}
+          </p>
+          <p className="text-2xl font-bold text-amber-600">{pendingInvoices}</p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+            {lang === 'az' ? 'Cəmi Xərclər' : 'Total Spent'}
+          </p>
+          <p className="text-2xl font-bold text-gray-900">{fmt(totalSpent)}</p>
+        </div>
       </div>
 
       {/* ── Search ── */}
@@ -238,98 +298,142 @@ export default function VendorsClient() {
         />
       </div>
 
-      {/* ── Table ── */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px]">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                {[t('ven.companyName'), t('ven.category'), t('ven.taxId'), lang === 'az' ? 'Əlaqə' : 'Contact', t('ven.totalSpent'), t('ven.lastPayment'), ''].map((h, i) => (
-                  <th key={i} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3 last:w-24">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {filtered.map(v => {
-                const { total, last } = getStats(v.id)
-                const catColor = CAT_COLORS[(v.category ?? 'other') as VendorCategory] ?? CAT_COLORS.other
-                return (
-                  <tr key={v.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-5 py-3.5">
-                      <Link href={`/vendors/${v.id}`} className="text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline">
-                        {v.name}
-                      </Link>
-                      {v.address && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{v.address}</p>}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {v.category ? (
-                        <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${catColor}`}>
-                          {tCat(v.category)}
-                        </span>
-                      ) : <span className="text-gray-300 text-xs">—</span>}
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-600 tabular-nums">
-                      {v.voen || <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      {v.phone && <p className="text-xs text-gray-600">{v.phone}</p>}
-                      {v.email && <p className="text-xs text-gray-400 mt-0.5">{v.email}</p>}
-                      {!v.phone && !v.email && <span className="text-gray-300 text-xs">—</span>}
-                    </td>
-                    <td className="px-5 py-3.5 text-sm font-semibold text-gray-900 tabular-nums">
-                      {total > 0 ? fmt(total) : <span className="text-gray-300 font-normal">—</span>}
-                    </td>
-                    <td className="px-5 py-3.5 text-sm text-gray-500 whitespace-nowrap">
-                      {formatDate(last)}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => openInvite(v)}
-                          title="Invite to Vendor Portal"
-                          className="text-xs text-teal-600 border border-teal-200 hover:bg-teal-50 px-2 py-1 rounded transition-colors font-medium"
-                        >
-                          Portal
-                        </button>
-                        <button
-                          onClick={() => openEdit(v)}
-                          title={t('common.edit')}
-                          className="text-gray-400 hover:text-blue-500 p-1.5 rounded hover:bg-blue-50 transition-colors"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                        </button>
-                        <button
-                          onClick={() => handleDelete(v.id)}
-                          title={t('common.delete')}
-                          className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
+      {/* ── Table / Empty State ── */}
+      <div className="w-full bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+
+        {vendors.length === 0 ? (
+          /* ── Empty state (no vendors at all) ── */
+          <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+            <i className="ti ti-building-store text-6xl text-gray-200 mb-4" />
+            <h3 className="text-lg font-semibold text-gray-700 mb-1">
+              {lang === 'az' ? 'Hələ təchizatçı yoxdur' : 'No vendors yet'}
+            </h3>
+            <p className="text-sm text-gray-400 max-w-xs mb-6">
+              {lang === 'az'
+                ? 'Alışları və satınalmaları izləməyə başlamaq üçün ilk təchizatçını əlavə edin'
+                : 'Add your first vendor to start tracking purchases and procurement'}
+            </p>
+            <button
+              onClick={openAdd}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              {t('ven.addVendor')}
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px]">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-100">
+                  {[
+                    t('ven.companyName'),
+                    t('ven.category'),
+                    t('ven.taxId'),
+                    lang === 'az' ? 'Əlaqə' : 'Contact',
+                    t('ven.totalSpent'),
+                    t('ven.lastPayment'),
+                    lang === 'az' ? 'Portal Statusu' : 'Portal Status',
+                    '',
+                  ].map((h, i) => (
+                    <th key={i} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-5 py-3 last:w-20">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-12 text-sm text-gray-400">
+                      {lang === 'az' ? 'Axtarışa uyğun nəticə tapılmadı.' : 'No results found.'}
                     </td>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {filtered.length === 0 && (
-          <div className="text-center py-16 text-gray-400 text-sm">
-            {search ? (lang === 'az' ? 'Axtarışa uyğun nəticə tapılmadı.' : 'No results found.') : t('ven.noVendors')}
+                ) : filtered.map(v => {
+                  const { total, last }  = getStats(v.id)
+                  const catColor         = CAT_COLORS[(v.category ?? 'other') as VendorCategory] ?? CAT_COLORS.other
+                  const portalStatus     = getPortalStatus(v.id)
+                  return (
+                    <tr key={v.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-5 py-3.5">
+                        <Link href={`/vendors/${v.id}`} className="text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline">
+                          {v.name}
+                        </Link>
+                        {v.address && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{v.address}</p>}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {v.category ? (
+                          <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${catColor}`}>
+                            {tCat(v.category)}
+                          </span>
+                        ) : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-gray-600 tabular-nums">
+                        {v.voen || <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {v.phone && <p className="text-xs text-gray-600">{v.phone}</p>}
+                        {v.email && <p className="text-xs text-gray-400 mt-0.5">{v.email}</p>}
+                        {!v.phone && !v.email && <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-5 py-3.5 text-sm font-semibold text-gray-900 tabular-nums">
+                        {total > 0 ? fmt(total) : <span className="text-gray-300 font-normal">—</span>}
+                      </td>
+                      <td className="px-5 py-3.5 text-sm text-gray-500 whitespace-nowrap">
+                        {formatDate(last)}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <PortalStatusBadge status={portalStatus} lang={lang} />
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => openInvite(v)}
+                            title="Invite to Vendor Portal"
+                            className={`text-xs border px-2 py-1 rounded transition-colors font-medium ${
+                              portalStatus === 'active'
+                                ? 'text-teal-700 border-teal-200 bg-teal-50 hover:bg-teal-100'
+                                : portalStatus === 'pending'
+                                ? 'text-amber-600 border-amber-200 hover:bg-amber-50'
+                                : 'text-teal-600 border-teal-200 hover:bg-teal-50'
+                            }`}
+                          >
+                            {portalStatus === 'active' ? 'Re-invite' : portalStatus === 'pending' ? 'Resend' : 'Invite'}
+                          </button>
+                          <button
+                            onClick={() => openEdit(v)}
+                            title={t('common.edit')}
+                            className="text-gray-400 hover:text-blue-500 p-1.5 rounded hover:bg-blue-50 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleDelete(v.id)}
+                            title={t('common.delete')}
+                            className="text-gray-400 hover:text-red-500 p-1.5 rounded hover:bg-red-50 transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-      {/* ── Modal ── */}
+      {/* ── Add / Edit Modal ── */}
       {showModal && (
         <div
           className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto py-10 px-4"
@@ -351,7 +455,6 @@ export default function VendorsClient() {
             <form onSubmit={handleSubmit}>
               <div className="px-6 py-5 space-y-4">
 
-                {/* Name */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     {t('ven.companyName')} <span className="text-red-500">*</span>
@@ -363,7 +466,6 @@ export default function VendorsClient() {
                   />
                 </div>
 
-                {/* VÖEN + Category */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('ven.taxId')}</label>
@@ -393,7 +495,6 @@ export default function VendorsClient() {
                   </div>
                 </div>
 
-                {/* Phone + Email */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('ven.phone')}</label>
@@ -413,7 +514,6 @@ export default function VendorsClient() {
                   </div>
                 </div>
 
-                {/* Address */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('ven.address')}</label>
                   <input
@@ -423,7 +523,6 @@ export default function VendorsClient() {
                   />
                 </div>
 
-                {/* Notes */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">{t('ven.notes')}</label>
                   <textarea
@@ -523,5 +622,37 @@ export default function VendorsClient() {
       )}
 
     </div>
+  )
+}
+
+function PortalStatusBadge({ status, lang }: { status: 'active' | 'pending' | 'suspended' | null; lang: string }) {
+  if (status === 'active') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-teal-100 text-teal-700">
+        <span className="w-1.5 h-1.5 rounded-full bg-teal-500 inline-block" />
+        {lang === 'az' ? 'Aktiv' : 'Active'}
+      </span>
+    )
+  }
+  if (status === 'pending') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+        {lang === 'az' ? 'Gözləyir' : 'Pending'}
+      </span>
+    )
+  }
+  if (status === 'suspended') {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+        <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block" />
+        {lang === 'az' ? 'Dayandırılıb' : 'Suspended'}
+      </span>
+    )
+  }
+  return (
+    <span className="text-xs text-gray-400">
+      {lang === 'az' ? 'Dəvət edilməyib' : 'Not Invited'}
+    </span>
   )
 }
