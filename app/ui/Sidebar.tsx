@@ -42,9 +42,10 @@ const SALES_ITEMS = [
 ]
 
 const PROC_ITEMS = [
-  { labelKey: 'nav.procRequests' as TranslationKey, href: '/procurement/requests', icon: 'ti-clipboard-list' },
-  { labelKey: 'nav.procOrders'   as TranslationKey, href: '/procurement/orders',   icon: 'ti-file-text' },
-  { labelKey: 'nav.procReceipts' as TranslationKey, href: '/procurement/receipts', icon: 'ti-package-import' },
+  { labelKey: 'nav.procRequests'    as TranslationKey, href: '/procurement/requests',        icon: 'ti-clipboard-list' },
+  { labelKey: 'nav.procOrders'      as TranslationKey, href: '/procurement/orders',           icon: 'ti-file-text' },
+  { labelKey: 'nav.procReceipts'    as TranslationKey, href: '/procurement/receipts',         icon: 'ti-package-import' },
+  { labelKey: 'nav.vendorInvoices'  as TranslationKey, href: '/procurement/vendor-invoices',  icon: 'ti-building-store' },
 ]
 
 const ROLE_RANK: Record<Role, number> = { employee: 0, finance: 1, manager: 2, admin: 3 }

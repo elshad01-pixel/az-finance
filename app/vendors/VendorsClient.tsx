@@ -68,6 +68,13 @@ export default function VendorsClient() {
   const [saving,    setSaving]    = useState(false)
   const [search,    setSearch]    = useState('')
 
+  // Vendor portal invite state
+  const [inviteVendor,  setInviteVendor]  = useState<Vendor | null>(null)
+  const [inviteEmail,   setInviteEmail]   = useState('')
+  const [inviteSaving,  setInviteSaving]  = useState(false)
+  const [inviteSuccess, setInviteSuccess] = useState(false)
+  const [inviteError,   setInviteError]   = useState<string | null>(null)
+
   const isEditing = editingId !== null
 
   useEffect(() => {
@@ -123,6 +130,33 @@ export default function VendorsClient() {
   }
 
   function closeModal() { setShowModal(false); setEditingId(null); setForm(EMPTY_FORM) }
+
+  function openInvite(v: Vendor) {
+    setInviteVendor(v)
+    setInviteEmail(v.email ?? '')
+    setInviteSuccess(false)
+    setInviteError(null)
+  }
+
+  async function handleInvite(e: React.FormEvent) {
+    e.preventDefault()
+    if (!inviteVendor || !inviteEmail.trim()) return
+    setInviteSaving(true)
+    setInviteError(null)
+    try {
+      const res  = await fetch('/api/vendor/invite', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ vendor_id: inviteVendor.id, email: inviteEmail.trim() }),
+      })
+      const json = await res.json()
+      if (!json.ok) { setInviteError(json.error ?? 'Failed to send invite.'); }
+      else          { setInviteSuccess(true) }
+    } catch {
+      setInviteError('Network error. Please try again.')
+    }
+    setInviteSaving(false)
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -252,6 +286,13 @@ export default function VendorsClient() {
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => openInvite(v)}
+                          title="Invite to Vendor Portal"
+                          className="text-xs text-teal-600 border border-teal-200 hover:bg-teal-50 px-2 py-1 rounded transition-colors font-medium"
+                        >
+                          Portal
+                        </button>
                         <button
                           onClick={() => openEdit(v)}
                           title={t('common.edit')}
@@ -410,6 +451,73 @@ export default function VendorsClient() {
               </div>
             </form>
 
+          </div>
+        </div>
+      )}
+
+      {/* ── Invite to Portal Modal ── */}
+      {inviteVendor && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget) setInviteVendor(null) }}
+        >
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Invite to Vendor Portal</h3>
+                <p className="text-sm text-gray-500 mt-0.5">{inviteVendor.name}</p>
+              </div>
+              <button onClick={() => setInviteVendor(null)} className="text-gray-400 hover:text-gray-600 p-1 rounded hover:bg-gray-100 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {inviteSuccess ? (
+              <div className="text-center py-4">
+                <div className="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <svg className="w-6 h-6 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <p className="text-sm font-medium text-gray-800">Invite sent!</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  An invitation email has been sent to <strong>{inviteEmail}</strong>.
+                </p>
+                <button onClick={() => setInviteVendor(null)} className="mt-4 text-sm text-teal-600 hover:text-teal-700 font-medium">
+                  Close
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleInvite} className="space-y-4">
+                <p className="text-sm text-gray-500">
+                  Enter the vendor&apos;s email to send them a portal access invite. They&apos;ll receive a link to sign in and view their POs.
+                </p>
+                {inviteError && (
+                  <div className="text-sm text-red-600 bg-red-50 border border-red-200 px-3 py-2.5 rounded-lg">{inviteError}</div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
+                  <input
+                    type="email" required value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    placeholder="vendor@company.com"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 transition"
+                  />
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button type="submit" disabled={inviteSaving}
+                    className="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors disabled:opacity-60">
+                    {inviteSaving ? 'Sending…' : 'Send Invite'}
+                  </button>
+                  <button type="button" onClick={() => setInviteVendor(null)}
+                    className="flex-1 border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium py-2.5 rounded-lg text-sm transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

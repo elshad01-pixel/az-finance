@@ -218,7 +218,150 @@ export async function sendAuditReport(
   return { ok: true, id: res?.id }
 }
 
-// ── 5. Tax reminder ────────────────────────────────────────────────────────
+// ── 5. Vendor portal invite ────────────────────────────────────────────────
+
+export async function sendVendorInviteEmail(
+  to:   string,
+  data: { vendorName: string; companyName: string; portalUrl: string },
+): Promise<SendResult> {
+  const body = `
+    <h2 style="margin:0 0 8px;color:#1e293b;font-size:20px;">Vendor Portal Invitation</h2>
+    <p style="margin:0 0 20px;font-size:14px;color:#334155;">
+      Dear <strong>${data.vendorName}</strong>,<br><br>
+      <strong>${data.companyName}</strong> has invited you to access their Vendor Portal on AzFinance.
+      You can now view your purchase orders, submit invoices, and track payment status online.
+    </p>
+    <p style="text-align:center;margin:0 0 24px;">
+      <a href="${data.portalUrl}"
+         style="display:inline-block;background:#0f766e;color:#ffffff;font-size:14px;font-weight:600;padding:13px 32px;border-radius:8px;text-decoration:none;">
+        Access Vendor Portal
+      </a>
+    </p>
+    <p style="margin:0;font-size:12px;color:#94a3b8;">
+      If you don't have an account yet, you can sign up at the portal link above using this email address.
+    </p>
+  `
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
+    to,
+    subject: `${data.companyName} — You've been invited to the Vendor Portal`,
+    html:    template('Vendor Portal Invitation', body),
+  })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, id: res?.id }
+}
+
+// ── 6. Vendor invoice submitted (to company) ───────────────────────────────
+
+export async function sendVendorInvoiceSubmitted(
+  to:   string,
+  data: { vendorName: string; invoiceNumber: string; amount: string; poNumber: string },
+): Promise<SendResult> {
+  const body = `
+    <h2 style="margin:0 0 8px;color:#1e293b;font-size:20px;">New Vendor Invoice Received</h2>
+    <p style="margin:0 0 20px;font-size:14px;color:#334155;">
+      <strong>${data.vendorName}</strong> has submitted a new invoice for your review.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:8px;padding:20px;margin:0 0 24px;">
+      <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">Invoice #</td>
+          <td style="padding:4px 0;font-size:13px;font-weight:600;color:#1e293b;text-align:right;">${data.invoiceNumber}</td></tr>
+      <tr><td style="padding:4px 0;font-size:13px;color:#64748b;">PO #</td>
+          <td style="padding:4px 0;font-size:13px;font-weight:600;color:#1e293b;text-align:right;">${data.poNumber}</td></tr>
+      <tr><td colspan="2" style="border-top:1px solid #e2e8f0;padding-top:10px;"></td></tr>
+      <tr><td style="font-size:15px;font-weight:700;color:#1e293b;">Amount</td>
+          <td style="font-size:18px;font-weight:700;color:#1e3a8a;text-align:right;">${data.amount}</td></tr>
+    </table>
+    <p style="margin:0;font-size:12px;color:#94a3b8;">Review this invoice in AzFinance under Procurement → Vendor Invoices.</p>
+  `
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
+    to,
+    subject: `[AzFinance] New vendor invoice from ${data.vendorName} — ${data.invoiceNumber}`,
+    html:    template('New Vendor Invoice', body),
+  })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, id: res?.id }
+}
+
+// ── 7. Vendor invoice approved (to vendor) ─────────────────────────────────
+
+export async function sendVendorInvoiceApproved(
+  to:   string,
+  data: { invoiceNumber: string; companyName: string },
+): Promise<SendResult> {
+  const body = `
+    <h2 style="margin:0 0 8px;color:#1e293b;font-size:20px;">Invoice Approved ✓</h2>
+    <p style="margin:0 0 20px;font-size:14px;color:#334155;">
+      Your invoice <strong>${data.invoiceNumber}</strong> has been approved by <strong>${data.companyName}</strong>.
+      Payment will be processed according to your agreed payment terms.
+    </p>
+    <p style="margin:0;font-size:12px;color:#94a3b8;">Log in to the Vendor Portal to check your invoice status.</p>
+  `
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
+    to,
+    subject: `[AzFinance] Your invoice ${data.invoiceNumber} has been approved`,
+    html:    template('Invoice Approved', body),
+  })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, id: res?.id }
+}
+
+// ── 8. Vendor invoice rejected (to vendor) ─────────────────────────────────
+
+export async function sendVendorInvoiceRejected(
+  to:   string,
+  data: { invoiceNumber: string; companyName: string; reason: string },
+): Promise<SendResult> {
+  const body = `
+    <h2 style="margin:0 0 8px;color:#1e293b;font-size:20px;">Invoice Needs Attention</h2>
+    <p style="margin:0 0 20px;font-size:14px;color:#334155;">
+      Your invoice <strong>${data.invoiceNumber}</strong> submitted to <strong>${data.companyName}</strong> could not be approved.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border-radius:8px;padding:16px 20px;margin:0 0 24px;border:1px solid #fecaca;">
+      <tr><td style="font-size:13px;font-weight:600;color:#991b1b;margin-bottom:4px;">Reason:</td></tr>
+      <tr><td style="font-size:13px;color:#7f1d1d;padding-top:4px;">${data.reason}</td></tr>
+    </table>
+    <p style="margin:0;font-size:12px;color:#94a3b8;">Please log in to the Vendor Portal to resubmit a corrected invoice.</p>
+  `
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
+    to,
+    subject: `[AzFinance] Your invoice ${data.invoiceNumber} needs attention`,
+    html:    template('Invoice Rejected', body),
+  })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, id: res?.id }
+}
+
+// ── 9. Vendor payment confirmed (to vendor) ────────────────────────────────
+
+export async function sendVendorPaymentConfirmed(
+  to:   string,
+  data: { invoiceNumber: string; amount: string; companyName: string },
+): Promise<SendResult> {
+  const body = `
+    <h2 style="margin:0 0 8px;color:#1e293b;font-size:20px;">Payment Confirmed ✓</h2>
+    <p style="margin:0 0 20px;font-size:14px;color:#334155;">
+      <strong>${data.companyName}</strong> has marked your invoice <strong>${data.invoiceNumber}</strong> as paid.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border-radius:8px;padding:20px;margin:0 0 24px;">
+      <tr><td style="font-size:15px;font-weight:700;color:#1e293b;">Amount Paid</td>
+          <td style="font-size:18px;font-weight:700;color:#16a34a;text-align:right;">${data.amount}</td></tr>
+    </table>
+    <p style="margin:0;font-size:12px;color:#94a3b8;">Thank you for doing business with ${data.companyName}.</p>
+  `
+  const { data: res, error } = await getResend().emails.send({
+    from:    getFrom(),
+    to,
+    subject: `[AzFinance] Payment confirmed for invoice ${data.invoiceNumber}`,
+    html:    template('Payment Confirmed', body),
+  })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, id: res?.id }
+}
+
+// ── 10. Tax reminder ────────────────────────────────────────────────────────
 
 export async function sendTaxReminder(
   to:   string,

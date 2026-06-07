@@ -73,6 +73,7 @@ const en = {
   'dash.cashBasis':       'Cash',
   'dash.pendingExpenses':    'Pending Expenses',
   'dash.inventoryPurchases': 'Inventory Purchases',
+  'dash.vendorInvoices':     'Vendor Invoices',
 
   // ── Invoices ─────────────────────────────────────────────────────────────
   'inv.newInvoice':        'New Invoice',
@@ -506,6 +507,7 @@ const en = {
   'nav.procRequests':        'Purchase Requests',
   'nav.procOrders':          'Purchase Orders',
   'nav.procReceipts':        'Goods Receipts',
+  'nav.vendorInvoices':      'Vendor Invoices',
   'page.procRequests':       'Purchase Requests',
   'page.procOrders':         'Purchase Orders',
   'page.procReceipts':       'Goods Receipts',
@@ -829,6 +831,7 @@ const az: Record<keyof typeof en, string> = {
   'dash.cashBasis':       'Nağd',
   'dash.pendingExpenses':    'Gözləyən Xərclər',
   'dash.inventoryPurchases': 'Ehtiyat Alışları',
+  'dash.vendorInvoices':     'Təchizatçı Fakturaları',
 
   // ── Invoices ─────────────────────────────────────────────────────────────
   'inv.newInvoice':        'Yeni Faktura',
@@ -1262,6 +1265,7 @@ const az: Record<keyof typeof en, string> = {
   'nav.procRequests':        'Satınalma Sorğuları',
   'nav.procOrders':          'Satınalma Sifarişləri',
   'nav.procReceipts':        'Mal Qəbulu',
+  'nav.vendorInvoices':      'Təchizatçı Fakturaları',
   'page.procRequests':       'Satınalma Sorğuları',
   'page.procOrders':         'Satınalma Sifarişləri',
   'page.procReceipts':       'Mal Qəbulu',

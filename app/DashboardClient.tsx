@@ -8,6 +8,7 @@ import VatThresholdMonitor from '@/app/ui/VatThresholdMonitor'
 import { useLanguage } from '@/lib/LanguageContext'
 import { useCompany } from '@/lib/CompanyContext'
 import { supabase } from '@/lib/supabase'
+import type { TranslationKey } from '@/lib/i18n'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -464,7 +465,7 @@ export default function DashboardClient() {
     return { preset: 'this_month', customFrom: '', customTo: '' }
   })
   const [refreshKey, setRefreshKey] = useState(0)
-  const { canAccess } = useCompany()
+  const { canAccess, isAdmin, isManager } = useCompany()
 
   // Procurement stats (Mid+ only)
   const [procPending,  setProcPending]  = useState(0)
@@ -547,7 +548,9 @@ export default function DashboardClient() {
   const [actLogs,       setActLogs]       = useState<ActLog[]>([])
   const [currCogs,      setCurrCogs]      = useState(0)
   const [prevCogs,      setPrevCogs]      = useState(0)
-  const [invPurchases,  setInvPurchases]  = useState(0)
+  const [invPurchases,    setInvPurchases]    = useState(0)
+  const [vendorPendingCount, setVendorPendingCount] = useState(0)
+  const [vendorPendingTotal, setVendorPendingTotal] = useState(0)
 
   useEffect(() => {
     async function fetchActLogs() {
@@ -647,6 +650,18 @@ export default function DashboardClient() {
       setCurrCogs((cogsCurrData ?? []).reduce((s: number, d: any) => s + Number(d.cogs_amount ?? 0), 0))
       setPrevCogs((cogsPrevData ?? []).reduce((s: number, d: any) => s + Number(d.cogs_amount ?? 0), 0))
       setInvPurchases((invPurchData ?? []).reduce((s: number, d: any) => s + Number(d.total_cost ?? 0), 0))
+
+      // Vendor portal pending invoices (admin/manager only)
+      if (isAdmin || isManager) {
+        const { data: vInvData } = await supabase
+          .from('vendor_invoices')
+          .select('total_amount')
+          .in('status', ['submitted', 'under_review'])
+        if (vInvData) {
+          setVendorPendingCount(vInvData.length)
+          setVendorPendingTotal(vInvData.reduce((s, r) => s + Number(r.total_amount ?? 0), 0))
+        }
+      }
 
       const shortLabels = lang === 'az' ? MS_AZ : MS_EN
       setChartData(chartMonths.map(({ year, month }) => {
@@ -804,6 +819,24 @@ export default function DashboardClient() {
         </svg>
       ),
     },
+    ...((isAdmin || isManager) ? [{
+      titleKey:      'dash.vendorInvoices' as TranslationKey,
+      value:         fmtAmt(vendorPendingTotal),
+      badge:         loading ? '…' : `${vendorPendingCount} pending`,
+      badgePositive: vendorPendingCount === 0,
+      note:          lang === 'az' ? 'Təchizatçı fakturaları' : 'Vendor invoices',
+      borderAccent:  'border-l-teal-500',
+      gradient:      'from-teal-50 to-white',
+      iconBg:        'bg-teal-100 text-teal-600',
+      breakdown:     undefined as undefined | Array<{ label: string; amount: string; negative?: boolean; total?: boolean }>,
+      href:          '/procurement/vendor-invoices',
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+    }] : []),
   ]
 
   const quickActions = [

@@ -6,7 +6,7 @@ import Sidebar from './Sidebar'
 import Header from './Header'
 import { useCompany } from '@/lib/CompanyContext'
 
-const AUTH_PATHS = ['/login', '/signup', '/create-company']
+const AUTH_PATHS = ['/login', '/signup', '/create-company', '/vendor']
 
 export default function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()

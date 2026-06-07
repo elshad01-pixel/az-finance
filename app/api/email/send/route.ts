@@ -7,6 +7,11 @@ import {
   sendPayslipEmail,
   sendAuditReport,
   sendTaxReminder,
+  sendVendorInviteEmail,
+  sendVendorInvoiceSubmitted,
+  sendVendorInvoiceApproved,
+  sendVendorInvoiceRejected,
+  sendVendorPaymentConfirmed,
 } from '@/lib/email'
 
 export async function POST(req: NextRequest) {
@@ -52,6 +57,21 @@ export async function POST(req: NextRequest) {
         break
       case 'tax_reminder':
         result = await sendTaxReminder(to, data as Parameters<typeof sendTaxReminder>[1])
+        break
+      case 'vendor_invite':
+        result = await sendVendorInviteEmail(to, data as Parameters<typeof sendVendorInviteEmail>[1])
+        break
+      case 'vendor_invoice_submitted':
+        result = await sendVendorInvoiceSubmitted(to, data as Parameters<typeof sendVendorInvoiceSubmitted>[1])
+        break
+      case 'vendor_invoice_approved':
+        result = await sendVendorInvoiceApproved(to, data as Parameters<typeof sendVendorInvoiceApproved>[1])
+        break
+      case 'vendor_invoice_rejected':
+        result = await sendVendorInvoiceRejected(to, data as Parameters<typeof sendVendorInvoiceRejected>[1])
+        break
+      case 'vendor_payment_confirmed':
+        result = await sendVendorPaymentConfirmed(to, data as Parameters<typeof sendVendorPaymentConfirmed>[1])
         break
       default:
         return NextResponse.json({ ok: false, error: `Unknown email type: ${type}` }, { status: 400 })
