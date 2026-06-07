@@ -46,64 +46,23 @@ export default function CreateCompanyPage() {
     setSaving(true)
     setError(null)
 
-    const companyName = skipForm
-      ? `${(user.email ?? 'user').split('@')[0]}'s Company`
-      : name.trim()
+    const { data, error: rpcErr } = await supabase.rpc('create_company_for_user', {
+      p_name:              skipForm
+                             ? `${(user.email ?? 'user').split('@')[0]}'s Company`
+                             : name.trim(),
+      p_industry:          (!skipForm && industry)      ? industry   : null,
+      p_tax_id:            (!skipForm && taxId.trim())  ? taxId.trim() : null,
+      p_tax_regime:        skipForm ? 'profit_tax'      : taxRegime,
+      p_vat_registered:    skipForm ? false             : vatRegistered,
+      p_accounting_method: skipForm ? 'accrual'         : method,
+    })
 
-    // 1. Create company
-    const { data: comp, error: compErr } = await supabase
-      .from('companies')
-      .insert({
-        name:     companyName,
-        owner_id: user.id,
-        ...((!skipForm && taxId.trim()) ? { tax_id: taxId.trim() } : {}),
-      })
-      .select()
-      .single()
-
-    if (compErr || !comp) {
-      setError(compErr?.message ?? 'Failed to create company.')
+    if (rpcErr || data?.error) {
+      setError(rpcErr?.message ?? data?.error ?? 'Failed to create company.')
       setSaving(false)
       return
     }
 
-    // 2. Make user admin member
-    const { error: memErr } = await supabase
-      .from('company_members')
-      .insert({
-        company_id:    comp.id,
-        user_id:       user.id,
-        role:          'admin',
-        status:        'active',
-        invited_email: user.email ?? null,
-      })
-
-    if (memErr) {
-      setError(memErr.message)
-      setSaving(false)
-      return
-    }
-
-    // 3. Company settings
-    await supabase.from('company_settings').insert({
-      company_id:        comp.id,
-      currency:          'AZN',
-      accounting_method: skipForm ? 'accrual' : method,
-      industry:          (!skipForm && industry) ? industry : null,
-    })
-
-    // 4. Tax settings — keyed on company_id for multi-tenant
-    await supabase.from('tax_settings').insert({
-      company_id:          comp.id,
-      tax_regime:          skipForm ? 'profit_tax' : taxRegime,
-      business_type:       'general',
-      vat_registered:      skipForm ? false : vatRegistered,
-      simplified_eligible: false,
-      payroll_sector:      'private_non_oil',
-      employee_count:      1,
-    })
-
-    // 5. Reload context (subscription auto-created by DB trigger)
     await refresh()
     router.push('/')
   }
