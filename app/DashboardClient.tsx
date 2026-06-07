@@ -197,6 +197,20 @@ function applyRange(q: any, r: DateRange) {
   return q
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyDeliveryRange(q: any, r: DateRange) {
+  if (r.start) q = q.gte('delivery_date', r.start)
+  if (r.end)   q = q.lte('delivery_date', r.end)
+  return q
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyStockMovRange(q: any, r: DateRange) {
+  if (r.start) q = q.gte('created_at', r.start + 'T00:00:00')
+  if (r.end)   q = q.lte('created_at', r.end   + 'T23:59:59')
+  return q
+}
+
 // ── Revenue Chart ─────────────────────────────────────────────────────────────
 
 // SVG user-space dimensions (preserveAspectRatio="none" fills container exactly)
@@ -467,11 +481,11 @@ export default function DashboardClient() {
     Promise.all([
       supabase.from('purchase_requests').select('id', { count: 'exact' }).eq('status', 'submitted'),
       supabase.from('purchase_orders').select('id', { count: 'exact' }).not('status', 'in', '(received,cancelled)'),
-      supabase.from('expenses').select('amount').eq('source', 'procurement').gte('date', mStart),
+      supabase.from('stock_movements').select('total_cost').eq('movement_type', 'in').eq('reference_type', 'purchase_order').gte('created_at', mStart + 'T00:00:00'),
     ]).then(([{ count: pc }, { count: oc }, { data: sd }]) => {
       setProcPending(pc ?? 0)
       setProcOpen(oc ?? 0)
-      setProcSpend((sd ?? []).reduce((s: number, r: { amount: number }) => s + Number(r.amount), 0))
+      setProcSpend((sd ?? []).reduce((s: number, r: { total_cost: number | null }) => s + Number(r.total_cost ?? 0), 0))
     })
   }, [canAccess])
 
@@ -531,6 +545,9 @@ export default function DashboardClient() {
   const [prevExpCash,   setPrevExpCash]   = useState(0)
   const [pendingExps,   setPendingExps]   = useState<Array<{ date: string; description: string; amount: number }>>([])
   const [actLogs,       setActLogs]       = useState<ActLog[]>([])
+  const [currCogs,      setCurrCogs]      = useState(0)
+  const [prevCogs,      setPrevCogs]      = useState(0)
+  const [invPurchases,  setInvPurchases]  = useState(0)
 
   useEffect(() => {
     async function fetchActLogs() {
@@ -577,24 +594,30 @@ export default function DashboardClient() {
         { data: expCashCurrData, error: expCashCurrErr },
         { data: expCashPrevData, error: expCashPrevErr },
         { data: pendingData },
+        { data: cogsCurrData },
+        { data: cogsPrevData },
+        { data: invPurchData },
       ] = await Promise.all([
         applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), sel),
         applyRange(supabase.from('invoices').select('amount').neq('status', 'Draft'), prev),
         applyRange(supabase.from('invoices').select('amount').eq('status', 'Paid'), sel),
         applyRange(supabase.from('invoices').select('amount').eq('status', 'Paid'), prev),
         applyRange(supabase.from('invoices').select('amount').eq('status', 'Unpaid'), sel),
-        applyRange(supabase.from('expenses').select('amount').or('source.is.null,source.neq.procurement'), sel),
-        applyRange(supabase.from('expenses').select('amount').or('source.is.null,source.neq.procurement'), prev),
+        applyRange(supabase.from('expenses').select('amount'), sel),
+        applyRange(supabase.from('expenses').select('amount'), prev),
         supabase.from('invoices').select('amount, date').neq('status', 'Draft').gte('date', chartStart).lte('date', chartEnd),
-        supabase.from('expenses').select('amount, date').or('source.is.null,source.neq.procurement').gte('date', chartStart).lte('date', chartEnd),
+        supabase.from('expenses').select('amount, date').gte('date', chartStart).lte('date', chartEnd),
         supabase.from('invoices').select('amount, date, client, number').neq('status', 'Draft').order('date', { ascending: false }).limit(5),
-        supabase.from('expenses').select('amount, date, description, category').or('source.is.null,source.neq.procurement').order('date', { ascending: false }).limit(5),
+        supabase.from('expenses').select('amount, date, description, category').order('date', { ascending: false }).limit(5),
         supabase.from('tax_settings').select('tax_regime, business_type, simplified_eligible, employee_count, vat_registered').maybeSingle(),
         supabase.from('invoices').select('amount').neq('status', 'Draft')
           .gte('date', (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 10) })()),
-        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid').or('source.is.null,source.neq.procurement'), sel),
-        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid').or('source.is.null,source.neq.procurement'), prev),
-        supabase.from('expenses').select('date, description, amount').eq('payment_status', 'pending').or('source.is.null,source.neq.procurement').order('date'),
+        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid'), sel),
+        applyRange(supabase.from('expenses').select('amount').eq('payment_status', 'paid'), prev),
+        supabase.from('expenses').select('date, description, amount').eq('payment_status', 'pending').order('date'),
+        applyDeliveryRange(supabase.from('deliveries').select('cogs_amount').eq('status', 'confirmed'), sel),
+        applyDeliveryRange(supabase.from('deliveries').select('cogs_amount').eq('status', 'confirmed'), prev),
+        applyStockMovRange(supabase.from('stock_movements').select('total_cost').eq('movement_type', 'in').eq('reference_type', 'purchase_order'), sel),
       ])
 
       const ts        = taxRow as TaxSettings | null
@@ -621,6 +644,9 @@ export default function DashboardClient() {
       setCurrExpCash(expCashCurrErr ? cExpenses : sumRows(expCashCurrData))
       setPrevExpCash(expCashPrevErr ? pExpenses : sumRows(expCashPrevData))
       setPendingExps((pendingData as Array<{ date: string; description: string; amount: number }>) ?? [])
+      setCurrCogs((cogsCurrData ?? []).reduce((s: number, d: any) => s + Number(d.cogs_amount ?? 0), 0))
+      setPrevCogs((cogsPrevData ?? []).reduce((s: number, d: any) => s + Number(d.cogs_amount ?? 0), 0))
+      setInvPurchases((invPurchData ?? []).reduce((s: number, d: any) => s + Number(d.total_cost ?? 0), 0))
 
       const shortLabels = lang === 'az' ? MS_AZ : MS_EN
       setChartData(chartMonths.map(({ year, month }) => {
@@ -656,8 +682,8 @@ export default function DashboardClient() {
 
   const activeExpenses = expBasis === 'accrual' ? currExpenses : currExpCash
   const activePrevExp  = expBasis === 'accrual' ? prevExpenses : prevExpCash
-  const currNet = currRevenue - activeExpenses - currTax
-  const prevNet = prevRevenue - activePrevExp  - prevTax
+  const currNet = currRevenue - currCogs - activeExpenses - currTax
+  const prevNet = prevRevenue - prevCogs - activePrevExp  - prevTax
 
   const canCompare     = filter.preset !== 'all_time'
   const noChg          = { text: '—', positive: true, neutral: true }
@@ -746,6 +772,7 @@ export default function DashboardClient() {
       note:          label,
       breakdown: loading ? undefined : [
         { label: t('dash.revenue'),                                    amount: fmtAmt(currRevenue) },
+        ...(currCogs > 0 ? [{ label: '− COGS',                        amount: fmtAmt(currCogs),       negative: true }] : []),
         { label: `− ${t('dash.expenses')}`,                           amount: fmtAmt(activeExpenses), negative: true },
         { label: `− ${t('dash.estTax')}${taxRateLabel(taxSettings)}`, amount: fmtAmt(currTax),        negative: true },
         { label: `= ${t('dash.netProfitAfterTax')}`,                  amount: fmtAmt(currNet),        total: true },
@@ -757,6 +784,23 @@ export default function DashboardClient() {
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
             d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+        </svg>
+      ),
+    },
+    {
+      titleKey:      'dash.inventoryPurchases' as const,
+      value:         fmtAmt(invPurchases),
+      badge:         loading ? '…' : (lang === 'az' ? 'Stok alışları' : 'Stock inflows'),
+      badgePositive: true,
+      note:          label,
+      borderAccent:  'border-l-violet-500',
+      gradient:      'from-violet-50 to-white',
+      iconBg:        'bg-violet-100 text-violet-600',
+      breakdown:     undefined as undefined | Array<{ label: string; amount: string; negative?: boolean; total?: boolean }>,
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
         </svg>
       ),
     },
@@ -872,7 +916,7 @@ export default function DashboardClient() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-5">
         {summaryCards.map((card) => (
           <div
             key={card.titleKey}

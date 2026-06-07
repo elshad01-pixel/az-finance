@@ -68,7 +68,8 @@ const en = {
   'dash.quickActions':    'Quick Actions',
   'dash.accrualBasis':    'Accrual',
   'dash.cashBasis':       'Cash',
-  'dash.pendingExpenses': 'Pending Expenses',
+  'dash.pendingExpenses':    'Pending Expenses',
+  'dash.inventoryPurchases': 'Inventory Purchases',
 
   // ── Invoices ─────────────────────────────────────────────────────────────
   'inv.newInvoice':        'New Invoice',
@@ -807,7 +808,8 @@ const az: Record<keyof typeof en, string> = {
   'dash.quickActions':    'Sürətli Əməliyyatlar',
   'dash.accrualBasis':    'Hesablama',
   'dash.cashBasis':       'Nağd',
-  'dash.pendingExpenses': 'Gözləyən Xərclər',
+  'dash.pendingExpenses':    'Gözləyən Xərclər',
+  'dash.inventoryPurchases': 'Ehtiyat Alışları',
 
   // ── Invoices ─────────────────────────────────────────────────────────────
   'inv.newInvoice':        'Yeni Faktura',
