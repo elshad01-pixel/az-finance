@@ -261,7 +261,7 @@ export default function ReportsClient() {
 
   useEffect(() => {
     Promise.all([
-      supabase.from('invoices').select('date, status, amount').neq('status', 'Draft'),
+      supabase.from('invoices').select('date, status, amount').not('status', 'in', '(Draft,Cancelled)'),
       supabase.from('expenses').select('date, category, amount'),
       supabase.from('tax_settings').select('tax_regime, business_type, simplified_eligible, vat_registered').maybeSingle(),
       supabase.from('company_settings').select('company_name').maybeSingle(),

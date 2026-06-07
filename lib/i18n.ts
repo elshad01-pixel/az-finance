@@ -45,9 +45,12 @@ const en = {
   'common.noExpenses':  'No expenses in this period.',
 
   // ── Invoice statuses ─────────────────────────────────────────────────────
-  'status.Paid':   'Paid',
-  'status.Unpaid': 'Unpaid',
-  'status.Draft':  'Draft',
+  'status.Paid':       'Paid',
+  'status.Unpaid':     'Unpaid',
+  'status.Draft':      'Draft',
+  'status.Cancelled':  'Voided',
+  'status.Overdue':    'Overdue',
+  'status.CreditNote': 'Credit Note',
 
   // ── Dashboard ────────────────────────────────────────────────────────────
   'dash.welcome':         'Welcome back',
@@ -105,7 +108,20 @@ const en = {
   'inv.noClients':         'No clients found — please add a client first.',
   'inv.goToClients':       'Go to Clients →',
   'inv.addNewClient':      '+ Add New Client',
-  'inv.quickAddTitle':     'Quick Add Client',
+  'inv.quickAddTitle':         'Quick Add Client',
+  'inv.void':                  'Void',
+  'inv.voidTitle':             'Void Invoice {number}?',
+  'inv.voidWarning':           'This cannot be undone. The invoice will be marked as void and excluded from reports.',
+  'inv.voidReason':            'Reason for voiding',
+  'inv.voidReasonPlaceholder': 'Enter reason…',
+  'inv.voidAction':            'Void Invoice',
+  'inv.voidOk':                'Invoice voided.',
+  'inv.voided':                'voided',
+  'inv.creditNote':            'Credit Note',
+  'inv.creditNoteTitle':       'Create Credit Note?',
+  'inv.creditNoteMsg':         'A new credit note for {number} will be created, offsetting the revenue in reports.',
+  'inv.creditNoteAction':      'Create Credit Note',
+  'inv.creditNoteOk':          'Credit note created.',
 
   // ── Expenses ─────────────────────────────────────────────────────────────
   'exp.addExpense':  'Add Expense',
@@ -785,9 +801,12 @@ const az: Record<keyof typeof en, string> = {
   'common.noExpenses':  'Bu dövrdə xərc yoxdur.',
 
   // ── Invoice statuses ─────────────────────────────────────────────────────
-  'status.Paid':   'Ödənilib',
-  'status.Unpaid': 'Ödənilməyib',
-  'status.Draft':  'Qaralama',
+  'status.Paid':       'Ödənilib',
+  'status.Unpaid':     'Ödənilməyib',
+  'status.Draft':      'Qaralama',
+  'status.Cancelled':  'Ləğv edildi',
+  'status.Overdue':    'Gecikmiş',
+  'status.CreditNote': 'Kredit Notu',
 
   // ── Dashboard ────────────────────────────────────────────────────────────
   'dash.welcome':         'Xoş gəlmisiniz',
@@ -845,7 +864,20 @@ const az: Record<keyof typeof en, string> = {
   'inv.noClients':         'Müştəri tapılmadı — əvvəlcə müştəri əlavə edin.',
   'inv.goToClients':       'Müştərilərə keç →',
   'inv.addNewClient':      '+ Yeni Müştəri',
-  'inv.quickAddTitle':     'Müştəri Əlavə Et',
+  'inv.quickAddTitle':         'Müştəri Əlavə Et',
+  'inv.void':                  'Ləğv et',
+  'inv.voidTitle':             '{number} Fakturasını Ləğv Et?',
+  'inv.voidWarning':           'Bu əməliyyat geri alına bilməz. Faktura ləğv edilmiş kimi işarələnəcək.',
+  'inv.voidReason':            'Ləğvetmə səbəbi',
+  'inv.voidReasonPlaceholder': 'Səbəbi daxil edin…',
+  'inv.voidAction':            'Fakturanı Ləğv Et',
+  'inv.voidOk':                'Faktura ləğv edildi.',
+  'inv.voided':                'ləğv edilib',
+  'inv.creditNote':            'Kredit Notu',
+  'inv.creditNoteTitle':       'Kredit Notu Yarat?',
+  'inv.creditNoteMsg':         '{number} üçün kredit notu yaradılacaq.',
+  'inv.creditNoteAction':      'Kredit Notu Yarat',
+  'inv.creditNoteOk':          'Kredit notu yaradıldı.',
 
   // ── Expenses ─────────────────────────────────────────────────────────────
   'exp.addExpense':  'Xərc Əlavə Et',

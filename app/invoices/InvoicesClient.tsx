@@ -12,8 +12,8 @@ import type { TranslationKey } from '@/lib/i18n'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type Status    = 'Paid' | 'Unpaid' | 'Draft'
-type FilterTab = 'All' | Status
+type Status    = 'Paid' | 'Unpaid' | 'Draft' | 'Cancelled' | 'Overdue' | 'CreditNote'
+type FilterTab = 'All' | 'Paid' | 'Unpaid' | 'Draft' | 'Cancelled'
 
 interface StoredLineItem {
   description: string
@@ -29,18 +29,21 @@ interface Client {
 }
 
 interface Invoice {
-  id:             number
-  number:         string
-  client:         string
-  client_id:      number | null
-  client_email:   string | null
-  client_address: string | null
-  date:           string
-  due_date:       string
-  amount:         number
-  status:         Status
-  line_items:     StoredLineItem[] | null
-  vat_applied:    boolean | null
+  id:                  number
+  number:              string
+  client:              string
+  client_id:           number | null
+  client_email:        string | null
+  client_address:      string | null
+  date:                string
+  due_date:            string
+  amount:              number
+  status:              Status
+  line_items:          StoredLineItem[] | null
+  vat_applied:         boolean | null
+  voided_at:           string | null
+  voided_reason:       string | null
+  credit_note_for_id:  number | null
 }
 
 interface LineItem {
@@ -51,17 +54,20 @@ interface LineItem {
 }
 
 interface MenuState    { id: number; top: number; right: number }
-interface ConfirmState { type: 'finalize' | 'delete'; invoice: Invoice }
+interface ConfirmState { type: 'finalize' | 'delete' | 'void' | 'credit_note'; invoice: Invoice }
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const STATUS_STYLES: Record<Status, string> = {
-  Paid:   'bg-green-100 text-green-700 ring-1 ring-green-200',
-  Unpaid: 'bg-red-100   text-red-700   ring-1 ring-red-200',
-  Draft:  'bg-gray-100  text-gray-600  ring-1 ring-gray-300',
+  Paid:       'bg-green-100  text-green-700  ring-1 ring-green-200',
+  Unpaid:     'bg-red-100    text-red-700    ring-1 ring-red-200',
+  Draft:      'bg-gray-100   text-gray-600   ring-1 ring-gray-300',
+  Cancelled:  'bg-gray-100   text-gray-400   ring-1 ring-gray-200 line-through',
+  Overdue:    'bg-orange-100 text-orange-700 ring-1 ring-orange-200',
+  CreditNote: 'bg-purple-100 text-purple-700 ring-1 ring-purple-200',
 }
 
-const FILTER_TABS: FilterTab[] = ['All', 'Paid', 'Unpaid', 'Draft']
+const FILTER_TABS: FilterTab[] = ['All', 'Paid', 'Unpaid', 'Draft', 'Cancelled']
 
 const EMPTY_LINE = (): LineItem => ({ id: Date.now() + Math.random(), description: '', quantity: '1', unitPrice: '' })
 
@@ -139,6 +145,7 @@ export default function InvoicesClient() {
   // ── Confirmation dialog ───────────────────────────────────────────────
   const [confirm, setConfirm]       = useState<ConfirmState | null>(null)
   const [confirming, setConfirming] = useState(false)
+  const [voidReason, setVoidReason] = useState('')
 
   // ── VAT ───────────────────────────────────────────────────────────────
   const [vatRegistered, setVatRegistered] = useState(false)
@@ -187,10 +194,11 @@ export default function InvoicesClient() {
   )
 
   const counts: Record<FilterTab, number> = {
-    All:    invoices.length,
-    Paid:   invoices.filter(i => i.status === 'Paid').length,
-    Unpaid: invoices.filter(i => i.status === 'Unpaid').length,
-    Draft:  invoices.filter(i => i.status === 'Draft').length,
+    All:       invoices.length,
+    Paid:      invoices.filter(i => i.status === 'Paid').length,
+    Unpaid:    invoices.filter(i => i.status === 'Unpaid').length,
+    Draft:     invoices.filter(i => i.status === 'Draft').length,
+    Cancelled: invoices.filter(i => i.status === 'Cancelled').length,
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
@@ -273,7 +281,9 @@ export default function InvoicesClient() {
     logActivity({ supabase, action: 'marked_paid', module: 'invoices', record_label: inv.number, company_id: company?.id })
   }
 
-  function handleDelete(inv: Invoice) { setMenu(null); setConfirm({ type: 'delete', invoice: inv }) }
+  function handleDelete(inv: Invoice)     { setMenu(null); setConfirm({ type: 'delete', invoice: inv }) }
+  function handleVoid(inv: Invoice)       { setMenu(null); setVoidReason(''); setConfirm({ type: 'void', invoice: inv }) }
+  function handleCreditNote(inv: Invoice) { setMenu(null); setConfirm({ type: 'credit_note', invoice: inv }) }
 
   async function handleDownloadPDF(inv: Invoice) {
     setMenu(null)
@@ -401,15 +411,66 @@ export default function InvoicesClient() {
   async function handleConfirm() {
     if (!confirm) return
     setConfirming(true)
+
     if (confirm.type === 'finalize') {
       await updateStatus(confirm.invoice.id, 'Unpaid')
-    } else {
+
+    } else if (confirm.type === 'delete') {
       const { error } = await supabase.from('invoices').delete().eq('id', confirm.invoice.id)
       if (!error) {
         setInvoices(prev => prev.filter(i => i.id !== confirm.invoice.id))
         logActivity({ supabase, action: 'deleted', module: 'invoices', record_label: confirm.invoice.number, company_id: company?.id })
       }
+
+    } else if (confirm.type === 'void') {
+      if (!voidReason.trim()) { setConfirming(false); return }
+      const now = new Date().toISOString()
+      const { error } = await supabase.from('invoices').update({
+        status:        'Cancelled',
+        voided_at:     now,
+        voided_reason: voidReason.trim(),
+      }).eq('id', confirm.invoice.id)
+      if (!error) {
+        setInvoices(prev => prev.map(i =>
+          i.id === confirm.invoice.id
+            ? { ...i, status: 'Cancelled' as Status, voided_at: now, voided_reason: voidReason.trim() }
+            : i,
+        ))
+        showToast(t('inv.voidOk'), true)
+        logActivity({ supabase, action: 'voided', module: 'invoices', record_label: confirm.invoice.number, company_id: company?.id })
+      }
+
+    } else if (confirm.type === 'credit_note') {
+      const orig = confirm.invoice
+      const { data: allNums } = await supabase.from('invoices').select('number')
+      const maxNum = (allNums ?? []).reduce((max, row) => {
+        const n = parseInt((row.number ?? '').replace(/\D+/g, '')) || 0
+        return Math.max(max, n)
+      }, 1000)
+      const cnNumber = `CN-${maxNum + 1}`
+      const today = new Date().toISOString().slice(0, 10)
+      const { error } = await supabase.from('invoices').insert({
+        number:             cnNumber,
+        client:             orig.client,
+        client_id:          orig.client_id,
+        client_email:       orig.client_email,
+        client_address:     orig.client_address,
+        date:               today,
+        due_date:           today,
+        amount:             -Math.abs(orig.amount),
+        status:             'CreditNote',
+        line_items:         orig.line_items,
+        vat_applied:        orig.vat_applied,
+        credit_note_for_id: orig.id,
+      })
+      if (!error) {
+        const { data: newRow } = await supabase.from('invoices').select('*').eq('number', cnNumber).single()
+        if (newRow) setInvoices(prev => [newRow as Invoice, ...prev])
+        showToast(t('inv.creditNoteOk'), true)
+        logActivity({ supabase, action: 'credit_note', module: 'invoices', record_label: cnNumber, company_id: company?.id })
+      }
     }
+
     setConfirming(false)
     setConfirm(null)
   }
@@ -1033,7 +1094,7 @@ export default function InvoicesClient() {
                       </MenuItem>
                     </>
                   )}
-                  {inv.status === 'Unpaid' && (
+                  {(inv.status === 'Unpaid' || inv.status === 'Overdue') && (
                     <>
                       <MenuItem onClick={() => handleMarkAsPaid(inv)} variant="success">
                         <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1064,12 +1125,12 @@ export default function InvoicesClient() {
                         {sendingEmailId === inv.id ? 'Sending…' : t('inv.sendEmail' as never) || 'Send Email'}
                       </MenuItem>
                       <div className="my-1 border-t border-gray-100" />
-                      <MenuItem onClick={() => handleDelete(inv)} variant="danger">
+                      <MenuItem onClick={() => handleVoid(inv)} variant="danger">
                         <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                         </svg>
-                        {t('common.delete')}
+                        {t('inv.void')}
                       </MenuItem>
                     </>
                   )}
@@ -1105,7 +1166,26 @@ export default function InvoicesClient() {
                         </svg>
                         {t('common.view')}
                       </MenuItem>
+                      <div className="my-1 border-t border-gray-100" />
+                      <MenuItem onClick={() => handleCreditNote(inv)} variant="default">
+                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
+                        </svg>
+                        {t('inv.creditNote')}
+                      </MenuItem>
                     </>
+                  )}
+                  {(inv.status === 'Cancelled' || inv.status === 'CreditNote') && (
+                    <MenuItem onClick={() => { setMenu(null); setSelectedInvoice(inv) }}>
+                      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      {t('common.view')}
+                    </MenuItem>
                   )}
                 </>
               )
@@ -1121,12 +1201,24 @@ export default function InvoicesClient() {
           <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6">
 
             <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${
-              confirm.type === 'delete' ? 'bg-red-100' : 'bg-blue-100'
+              confirm.type === 'delete' || confirm.type === 'void' ? 'bg-red-100'
+              : confirm.type === 'credit_note' ? 'bg-purple-100'
+              : 'bg-blue-100'
             }`}>
               {confirm.type === 'delete' ? (
                 <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              ) : confirm.type === 'void' ? (
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+              ) : confirm.type === 'credit_note' ? (
+                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z" />
                 </svg>
               ) : (
                 <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1137,24 +1229,56 @@ export default function InvoicesClient() {
             </div>
 
             <h3 className="text-lg font-bold text-gray-900">
-              {confirm.type === 'delete' ? t('inv.deleteTitle') : t('inv.finalizeTitle')}
+              {confirm.type === 'delete'      ? t('inv.deleteTitle')
+               : confirm.type === 'void'      ? t('inv.voidTitle').replace('{number}', confirm.invoice.number)
+               : confirm.type === 'credit_note' ? t('inv.creditNoteTitle')
+               : t('inv.finalizeTitle')}
             </h3>
             <p className="text-sm text-gray-500 mt-1.5">
               {confirm.type === 'delete'
                 ? t('inv.deleteMsg').replace('{number}', confirm.invoice.number)
+                : confirm.type === 'void'
+                ? t('inv.voidWarning')
+                : confirm.type === 'credit_note'
+                ? t('inv.creditNoteMsg').replace('{number}', confirm.invoice.number)
                 : t('inv.finalizeMsg').replace('{number}', confirm.invoice.number)}
             </p>
+
+            {confirm.type === 'void' && (
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  {t('inv.voidReason')} <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={voidReason}
+                  onChange={e => setVoidReason(e.target.value)}
+                  placeholder={t('inv.voidReasonPlaceholder')}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-red-400 focus:border-transparent resize-none"
+                />
+              </div>
+            )}
 
             <div className="flex gap-3 mt-6">
               <button onClick={() => setConfirm(null)} disabled={confirming}
                 className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-60">
                 {t('common.cancel')}
               </button>
-              <button onClick={handleConfirm} disabled={confirming}
+              <button
+                onClick={handleConfirm}
+                disabled={confirming || (confirm.type === 'void' && !voidReason.trim())}
                 className={`flex-1 px-4 py-2.5 text-sm font-medium text-white rounded-lg transition-colors disabled:opacity-60 ${
-                  confirm.type === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+                  confirm.type === 'delete' || confirm.type === 'void'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : confirm.type === 'credit_note'
+                    ? 'bg-purple-600 hover:bg-purple-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
                 }`}>
-                {confirming ? t('common.processing') : confirm.type === 'delete' ? t('common.delete') : t('inv.finalize')}
+                {confirming ? t('common.processing')
+                  : confirm.type === 'delete'      ? t('common.delete')
+                  : confirm.type === 'void'        ? t('inv.voidAction')
+                  : confirm.type === 'credit_note' ? t('inv.creditNoteAction')
+                  : t('inv.finalize')}
               </button>
             </div>
 
