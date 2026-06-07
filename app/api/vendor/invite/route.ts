@@ -82,25 +82,38 @@ export async function POST(req: NextRequest) {
     .eq('id', companyId)
     .maybeSingle()
 
-  // Send invite email (fire-and-forget — don't block on email failure)
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  // Send invite email — capture result so errors are visible to the caller
+  const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const emailTo = email.toLowerCase().trim()
+  let emailResult: { ok: boolean; error?: string; id?: string } = { ok: false, error: 'not attempted' }
+
+  console.log('[vendor/invite] sending to:', emailTo, 'from:', process.env.EMAIL_FROM ?? 'onboarding@resend.dev (fallback)')
+
   try {
-    await fetch(`${appUrl}/api/email/send`, {
+    const emailRes = await fetch(`${appUrl}/api/email/send`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'vendor_invite',
-        to:   email.toLowerCase().trim(),
+        to:   emailTo,
         data: {
-          vendorName:  vendor?.name ?? email,
+          vendorName:  vendor?.name ?? emailTo,
           companyName: company?.name ?? 'Your buyer',
           portalUrl:   `${appUrl}/vendor/login`,
         },
       }),
     })
-  } catch {
-    // Non-fatal: invite record was created, email is best-effort
+    emailResult = await emailRes.json() as typeof emailResult
+  } catch (e) {
+    emailResult = { ok: false, error: String(e) }
   }
 
-  return NextResponse.json({ ok: true })
+  if (!emailResult.ok) {
+    console.error('[vendor/invite] Resend error:', emailResult.error)
+  } else {
+    console.log('[vendor/invite] Email sent, id:', emailResult.id)
+  }
+
+  // Invite record was created regardless — email failure is non-fatal but visible
+  return NextResponse.json({ ok: true, emailSent: emailResult.ok, emailError: emailResult.error ?? null })
 }

@@ -170,9 +170,13 @@ export default function VendorsClient() {
       })
       const json = await res.json()
       if (!json.ok) {
-        setInviteError(json.error ?? 'Failed to send invite.')
+        setInviteError(json.error ?? 'Failed to create invite record.')
       } else {
+        // Invite record saved. Show success but warn if email delivery failed.
         setInviteSuccess(true)
+        if (!json.emailSent && json.emailError) {
+          setInviteError(`Invite saved but email failed: ${json.emailError}`)
+        }
         setPortalAccess(prev => {
           const without = prev.filter(a => !(a.vendor_id === inviteVendor.id && a.email === inviteEmail.trim()))
           return [...without, { vendor_id: inviteVendor.id, email: inviteEmail.trim(), status: 'pending' }]
@@ -574,17 +578,28 @@ export default function VendorsClient() {
             </div>
 
             {inviteSuccess ? (
-              <div className="text-center py-4">
-                <div className="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-6 h-6 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+              <div className="py-4">
+                <div className="flex flex-col items-center text-center mb-4">
+                  <div className="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center mb-3">
+                    <svg className="w-6 h-6 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-gray-800">Invite record saved!</p>
+                  <p className="text-xs text-gray-500 mt-1">Vendor: <strong>{inviteEmail}</strong></p>
                 </div>
-                <p className="text-sm font-medium text-gray-800">Invite sent!</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  An invitation email has been sent to <strong>{inviteEmail}</strong>.
-                </p>
-                <button onClick={() => setInviteVendor(null)} className="mt-4 text-sm text-teal-600 hover:text-teal-700 font-medium">
+                {inviteError ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-xs text-amber-800">
+                    <p className="font-semibold mb-1">Email delivery failed:</p>
+                    <p className="font-mono break-all">{inviteError}</p>
+                    <p className="mt-2 text-amber-600">
+                      Fix: set <code className="bg-amber-100 px-1 rounded">EMAIL_FROM=noreply@digitx.az</code> in .env.local after verifying digitx.az in Resend. Until then, invite by sharing the portal link manually.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 text-center">Invitation email sent to <strong>{inviteEmail}</strong>.</p>
+                )}
+                <button onClick={() => setInviteVendor(null)} className="mt-4 w-full text-sm text-teal-600 hover:text-teal-700 font-medium text-center block">
                   Close
                 </button>
               </div>
