@@ -142,8 +142,8 @@ BEGIN
   VALUES (v_company_id, v_uid, 'admin', 'active', v_email);
 
   -- 3. Company settings
-  INSERT INTO company_settings (company_id, currency, accounting_method, industry)
-  VALUES (v_company_id, 'AZN', p_accounting_method, NULLIF(trim(COALESCE(p_industry, '')), ''));
+  INSERT INTO company_settings (company_id, accounting_method, industry)
+  VALUES (v_company_id, p_accounting_method, NULLIF(trim(COALESCE(p_industry, '')), ''));
 
   -- 4. Tax settings
   INSERT INTO tax_settings (
