@@ -32,7 +32,15 @@ export async function proxy(request: NextRequest) {
   )
 
   // getSession() reads from cookies — no network call, never throws AuthSessionMissingError.
-  const { data: { session } } = await supabase.auth.getSession()
+  // Wrapped in try/catch so middleware fails open if Supabase is unreachable (free-tier pause, timeout).
+  let session = null
+  try {
+    const { data } = await supabase.auth.getSession()
+    session = data.session
+  } catch {
+    // Supabase unreachable — let request through, pages will handle auth themselves
+    return response
+  }
 
   const { pathname } = request.nextUrl
   const isPublicPath = PUBLIC_PATHS.some(p => pathname.startsWith(p))
