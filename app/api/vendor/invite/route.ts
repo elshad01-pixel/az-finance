@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { Resend } from 'resend'
 
 export async function POST(req: NextRequest) {
   // Parse body
@@ -68,52 +69,80 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: insertErr.message }, { status: 500 })
   }
 
-  // Load vendor name for the email
-  const { data: vendor } = await supabaseAdmin
-    .from('vendors')
-    .select('name')
-    .eq('id', vendor_id)
-    .maybeSingle()
+  // Load vendor + company names for the email
+  const [{ data: vendor }, { data: company }] = await Promise.all([
+    supabaseAdmin.from('vendors').select('name').eq('id', vendor_id).maybeSingle(),
+    supabaseAdmin.from('companies').select('name').eq('id', companyId).maybeSingle(),
+  ])
 
-  // Load company name
-  const { data: company } = await supabaseAdmin
-    .from('companies')
-    .select('name')
-    .eq('id', companyId)
-    .maybeSingle()
+  // Send invite email directly via Resend (no internal fetch)
+  const emailTo      = email.toLowerCase().trim()
+  const companyName  = company?.name ?? 'Your buyer'
+  const vendorName   = vendor?.name ?? emailTo
+  const appUrl       = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  const portalUrl    = `${appUrl}/vendor/login`
+  const fromAddress  = 'AzFinance <onboarding@resend.dev>'
 
-  // Send invite email — capture result so errors are visible to the caller
-  const appUrl  = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-  const emailTo = email.toLowerCase().trim()
-  let emailResult: { ok: boolean; error?: string; id?: string } = { ok: false, error: 'not attempted' }
+  console.log('[vendor/invite] from:', fromAddress, '→ to:', emailTo)
 
-  console.log('[vendor/invite] sending to:', emailTo, 'from:', process.env.EMAIL_FROM ?? 'onboarding@resend.dev (fallback)')
+  let emailSent  = false
+  let emailError: string | null = null
+  let emailId:    string | null = null
 
-  try {
-    const emailRes = await fetch(`${appUrl}/api/email/send`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'vendor_invite',
-        to:   emailTo,
-        data: {
-          vendorName:  vendor?.name ?? emailTo,
-          companyName: company?.name ?? 'Your buyer',
-          portalUrl:   `${appUrl}/vendor/login`,
-        },
-      }),
-    })
-    emailResult = await emailRes.json() as typeof emailResult
-  } catch (e) {
-    emailResult = { ok: false, error: String(e) }
-  }
-
-  if (!emailResult.ok) {
-    console.error('[vendor/invite] Resend error:', emailResult.error)
+  const resendKey = process.env.RESEND_API_KEY
+  if (!resendKey) {
+    emailError = 'RESEND_API_KEY not configured'
+    console.error('[vendor/invite]', emailError)
   } else {
-    console.log('[vendor/invite] Email sent, id:', emailResult.id)
+    const resend = new Resend(resendKey)
+    const { data, error } = await resend.emails.send({
+      from:    fromAddress,
+      to:      [emailTo],
+      subject: `You've been invited to ${companyName} Vendor Portal`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <body style="margin:0;padding:0;background:#f1f5f9;font-family:sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 20px;">
+            <tr><td align="center">
+              <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;">
+                <tr><td style="background:#0f766e;padding:28px 36px;">
+                  <span style="font-size:22px;font-weight:700;color:#fff;">Az</span><span style="font-size:22px;font-weight:700;color:#99f6e4;">Finance</span>
+                  <p style="margin:4px 0 0;font-size:11px;color:#99f6e4;">Vendor Portal</p>
+                </td></tr>
+                <tr><td style="padding:32px 36px;">
+                  <h2 style="margin:0 0 12px;color:#134e4a;font-size:18px;">You've been invited!</h2>
+                  <p style="margin:0 0 16px;font-size:14px;color:#334155;">
+                    Dear <strong>${vendorName}</strong>,<br><br>
+                    <strong>${companyName}</strong> has invited you to access their Vendor Portal on AzFinance.
+                    You can view your purchase orders, submit invoices, and track payment status online.
+                  </p>
+                  <p style="text-align:center;margin:24px 0;">
+                    <a href="${portalUrl}" style="display:inline-block;background:#0f766e;color:#fff;font-size:14px;font-weight:600;padding:13px 32px;border-radius:8px;text-decoration:none;">
+                      Access Vendor Portal
+                    </a>
+                  </p>
+                  <p style="margin:0;font-size:12px;color:#94a3b8;">
+                    If you don't have an account, sign up at the portal link above using this email address.
+                  </p>
+                </td></tr>
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
+      `,
+    })
+
+    if (error) {
+      emailError = error.message
+      console.error('[vendor/invite] Resend error:', error)
+    } else {
+      emailSent = true
+      emailId   = data?.id ?? null
+      console.log('[vendor/invite] Email sent, id:', emailId)
+    }
   }
 
-  // Invite record was created regardless — email failure is non-fatal but visible
-  return NextResponse.json({ ok: true, emailSent: emailResult.ok, emailError: emailResult.error ?? null })
+  return NextResponse.json({ ok: true, emailSent, emailError, emailId })
 }
