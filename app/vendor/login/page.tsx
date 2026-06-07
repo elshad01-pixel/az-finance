@@ -25,28 +25,31 @@ export default function VendorLoginPage() {
       return
     }
 
-    // Check vendor_portal_access — only active records are allowed in
-    const { data: access } = await supabase
-      .from('vendor_portal_access')
-      .select('id, status')
-      .eq('email', email.toLowerCase().trim())
-      .maybeSingle()
+    // Check vendor_portal_access via server-side API (uses service role — bypasses RLS)
+    let checkResult: { ok: boolean; found: boolean; status: string | null; email: string; error: string | null } | null = null
+    try {
+      const res = await fetch('/api/vendor/check-access', { method: 'POST' })
+      checkResult = await res.json()
+      console.log('[vendor-login] access check result:', checkResult)
+    } catch (e) {
+      console.error('[vendor-login] check-access fetch error:', e)
+    }
 
-    if (!access) {
+    if (!checkResult?.found) {
       await supabase.auth.signOut()
       setError('Access denied. Contact your supplier to request portal access.')
       setLoading(false)
       return
     }
 
-    if (access.status === 'pending') {
+    if (checkResult.status === 'pending') {
       await supabase.auth.signOut()
       setError('Your access is pending activation. Contact your supplier to confirm your invitation.')
       setLoading(false)
       return
     }
 
-    if (access.status === 'suspended') {
+    if (checkResult.status === 'suspended') {
       await supabase.auth.signOut()
       setError('Your portal access has been suspended. Contact your supplier.')
       setLoading(false)
