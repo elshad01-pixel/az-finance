@@ -7,7 +7,7 @@ function getResend(): Resend {
 }
 
 function getFrom(): string {
-  return process.env.EMAIL_FROM ?? 'onboarding@resend.dev'
+  return process.env.EMAIL_FROM ?? 'AzFinance <onboarding@resend.dev>'
 }
 
 function template(title: string, body: string): string {
