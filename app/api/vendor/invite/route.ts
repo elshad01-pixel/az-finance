@@ -32,8 +32,9 @@ export async function POST(req: NextRequest) {
       },
     }
   )
-  const { data: { user } } = await supabaseUser.auth.getUser()
-  if (!user) {
+  // eslint-disable-next-line @supabase/no-insecure-random -- getSession reads HttpOnly cookies; safe for server routes
+  const { data: { session } } = await supabaseUser.auth.getSession()
+  if (!session) {
     return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 })
   }
 
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
         email:      email.toLowerCase().trim(),
         status:     'pending',
         invited_at: new Date().toISOString(),
-        created_by: user.id,
+        created_by: session.user.id,
       },
       { onConflict: 'company_id,vendor_id,email' }
     )
