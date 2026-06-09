@@ -142,7 +142,7 @@ export default function VendorLoginPage() {
 
     // Password updated — now check vendor access and redirect
     const { data: { session: updatedSession } } = await supabase.auth.getSession()
-    let checkResult: { ok: boolean; found: boolean; status: string | null } | null = null
+    let checkResult: { found: boolean; status: string | null; error: string | null } | null = null
     if (updatedSession) {
       checkResult = await checkAccess(updatedSession.access_token)
     }
