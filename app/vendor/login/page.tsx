@@ -59,17 +59,28 @@ export default function VendorLoginPage() {
 
     const { error: signUpErr } = await supabase.auth.signUp({ email, password })
     if (signUpErr) {
-      setError(signUpErr.message)
+      // "User already registered" — tell them to sign in instead
+      if (signUpErr.message.toLowerCase().includes('already') || signUpErr.message.toLowerCase().includes('registered')) {
+        setMode('login')
+        setError('An account with this email already exists. Please sign in with your existing password.')
+      } else {
+        setError(signUpErr.message)
+      }
       setLoading(false)
       return
     }
 
-    // After sign-up, immediately sign in (email confirmation may be disabled)
+    // Try to sign in immediately (works when email confirmation is disabled)
     const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
     if (signInErr) {
-      // If email confirmation is required, show a helpful message
-      setError(null)
-      setResetSent(true) // reuse the "check email" screen
+      if (signInErr.message.toLowerCase().includes('invalid') || signInErr.message.toLowerCase().includes('credentials')) {
+        // Supabase silently no-oped the sign-up (email already exists, confirmation enabled)
+        setMode('login')
+        setError('An account with this email already exists. Please sign in with your existing password.')
+      } else {
+        // Email confirmation required — show check email screen
+        setResetSent(true)
+      }
       setLoading(false)
       return
     }
