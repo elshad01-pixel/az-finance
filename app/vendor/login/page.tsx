@@ -6,12 +6,12 @@ import { supabase } from '@/lib/supabase'
 
 export default function VendorLoginPage() {
   const router = useRouter()
+  const [mode,     setMode]     = useState<'login' | 'signup' | 'reset'>('login')
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
   const [resetSent, setResetSent] = useState(false)
-  const [showReset, setShowReset] = useState(false)
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -42,16 +42,51 @@ export default function VendorLoginPage() {
       return
     }
 
-    if (checkResult.status === 'pending') {
+    if (checkResult.status === 'suspended') {
       await supabase.auth.signOut()
-      setError('Your access is pending activation. Contact your supplier to confirm your invitation.')
+      setError('Your portal access has been suspended. Contact your supplier.')
       setLoading(false)
       return
     }
 
-    if (checkResult.status === 'suspended') {
+    router.push('/vendor/dashboard')
+  }
+
+  async function handleSignUp(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    const { error: signUpErr } = await supabase.auth.signUp({ email, password })
+    if (signUpErr) {
+      setError(signUpErr.message)
+      setLoading(false)
+      return
+    }
+
+    // After sign-up, immediately sign in (email confirmation may be disabled)
+    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
+    if (signInErr) {
+      // If email confirmation is required, show a helpful message
+      setError(null)
+      setResetSent(true) // reuse the "check email" screen
+      setLoading(false)
+      return
+    }
+
+    // Check access
+    let checkResult: { ok: boolean; found: boolean; status: string | null; email: string; error: string | null } | null = null
+    try {
+      const res = await fetch('/api/vendor/check-access', { method: 'POST' })
+      checkResult = await res.json()
+      console.log('[vendor-signup] access check result:', checkResult)
+    } catch (e) {
+      console.error('[vendor-signup] check-access fetch error:', e)
+    }
+
+    if (!checkResult?.found) {
       await supabase.auth.signOut()
-      setError('Your portal access has been suspended. Contact your supplier.')
+      setError('Your email is not on the vendor access list. Check that you are using the invited email address.')
       setLoading(false)
       return
     }
@@ -97,15 +132,18 @@ export default function VendorLoginPage() {
             <div className="text-center py-4">
               <div className="w-14 h-14 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-7 h-7 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
               <h3 className="text-lg font-bold text-gray-900 mb-2">Check your email</h3>
               <p className="text-sm text-gray-500 mb-4">
-                Password reset instructions have been sent to <strong>{email}</strong>.
+                {mode === 'signup'
+                  ? <>A confirmation link has been sent to <strong>{email}</strong>. Click it to activate your account, then sign in.</>
+                  : <>Password reset instructions have been sent to <strong>{email}</strong>.</>
+                }
               </p>
               <button
-                onClick={() => { setResetSent(false); setShowReset(false) }}
+                onClick={() => { setResetSent(false); setMode('login') }}
                 className="text-sm text-teal-600 hover:text-teal-700 font-medium"
               >
                 ← Back to login
@@ -113,13 +151,33 @@ export default function VendorLoginPage() {
             </div>
           ) : (
             <>
+              {/* Mode tabs */}
+              {mode !== 'reset' && (
+                <div className="flex border border-gray-200 rounded-lg p-1 mb-6">
+                  <button
+                    onClick={() => { setMode('login'); setError(null) }}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${mode === 'login' ? 'bg-teal-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={() => { setMode('signup'); setError(null) }}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md transition-colors ${mode === 'signup' ? 'bg-teal-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Create Account
+                  </button>
+                </div>
+              )}
+
               <div className="mb-6">
                 <h2 className="text-xl font-bold text-gray-900">
-                  {showReset ? 'Reset Password' : 'Sign in to Vendor Portal'}
+                  {mode === 'reset' ? 'Reset Password' : mode === 'signup' ? 'Create Your Account' : 'Sign in to Vendor Portal'}
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  {showReset
+                  {mode === 'reset'
                     ? "We'll send you a reset link."
+                    : mode === 'signup'
+                    ? 'Use the email address your supplier invited.'
                     : 'Access your purchase orders and invoices.'}
                 </p>
               </div>
@@ -130,7 +188,10 @@ export default function VendorLoginPage() {
                 </div>
               )}
 
-              <form onSubmit={showReset ? handleForgotPassword : handleLogin} className="space-y-4">
+              <form
+                onSubmit={mode === 'reset' ? handleForgotPassword : mode === 'signup' ? handleSignUp : handleLogin}
+                className="space-y-4"
+              >
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
                   <input
@@ -144,7 +205,7 @@ export default function VendorLoginPage() {
                   />
                 </div>
 
-                {!showReset && (
+                {mode !== 'reset' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
                     <input
@@ -166,19 +227,28 @@ export default function VendorLoginPage() {
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">
                       <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                      {showReset ? 'Sending…' : 'Signing in…'}
+                      {mode === 'reset' ? 'Sending…' : mode === 'signup' ? 'Creating account…' : 'Signing in…'}
                     </span>
-                  ) : showReset ? 'Send Reset Link' : 'Sign In'}
+                  ) : mode === 'reset' ? 'Send Reset Link' : mode === 'signup' ? 'Create Account' : 'Sign In'}
                 </button>
               </form>
 
               <div className="mt-4 text-center">
-                <button
-                  onClick={() => { setShowReset(v => !v); setError(null) }}
-                  className="text-sm text-teal-600 hover:text-teal-700"
-                >
-                  {showReset ? '← Back to login' : 'Forgot password?'}
-                </button>
+                {mode === 'reset' ? (
+                  <button
+                    onClick={() => { setMode('login'); setError(null) }}
+                    className="text-sm text-teal-600 hover:text-teal-700"
+                  >
+                    ← Back to login
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setMode('reset'); setError(null) }}
+                    className="text-sm text-teal-600 hover:text-teal-700"
+                  >
+                    Forgot password?
+                  </button>
+                )}
               </div>
             </>
           )}
