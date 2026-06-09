@@ -18,12 +18,12 @@ export async function POST() {
       },
     }
   )
-  const { data: { session } } = await supabaseUser.auth.getSession()
-  if (!session?.user?.email) {
+  const { data: { user } } = await supabaseUser.auth.getUser()
+  if (!user?.email) {
     return NextResponse.json({ ok: false, status: null, error: 'Not authenticated' }, { status: 401 })
   }
 
-  const email = session.user.email.toLowerCase().trim()
+  const email = user.email.toLowerCase().trim()
   console.log('[vendor/check-access] checking email:', email)
 
   // Service role bypasses RLS so any vendor email is readable regardless of company membership

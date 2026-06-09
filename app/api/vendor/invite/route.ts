@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
       },
     }
   )
-  const { data: { session } } = await supabaseUser.auth.getSession()
-  if (!session) {
+  const { data: { user } } = await supabaseUser.auth.getUser()
+  if (!user) {
     return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 })
   }
 
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
         email:      email.toLowerCase().trim(),
         status:     'pending',
         invited_at: new Date().toISOString(),
-        created_by: session.user.id,
+        created_by: user.id,
       },
       { onConflict: 'company_id,vendor_id,email' }
     )
