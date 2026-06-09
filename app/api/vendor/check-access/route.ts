@@ -30,21 +30,24 @@ export async function POST(req: NextRequest) {
   const email = user.email.toLowerCase().trim()
   console.log('[vendor/check-access] checking email:', email)
 
-  const { data, error } = await admin
+  const { data: rows, error } = await admin
     .from('vendor_portal_access')
     .select('id, status, company_id, vendor_id')
     .eq('email', email)
-    .maybeSingle()
 
-  console.log('[vendor/check-access] result:', JSON.stringify(data), 'error:', error?.message ?? null)
+  console.log('[vendor/check-access] rows:', JSON.stringify(rows), 'error:', error?.message ?? null)
 
   if (error) {
     return NextResponse.json({ ok: false, status: null, found: false, email, error: error.message })
   }
 
-  if (!data) {
+  if (!rows || rows.length === 0) {
     return NextResponse.json({ ok: true, email, status: null, found: false, error: null })
   }
+
+  // Pick the best record: active > pending > suspended
+  const statusRank: Record<string, number> = { active: 0, pending: 1, suspended: 2 }
+  const data = rows.sort((a, b) => (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9))[0]
 
   // Auto-activate on first login: pending → active
   if (data.status === 'pending') {
