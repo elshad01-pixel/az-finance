@@ -1,17 +1,26 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function VendorLoginPage() {
   const router = useRouter()
-  const [mode,     setMode]     = useState<'login' | 'signup' | 'reset'>('login')
-  const [email,    setEmail]    = useState('')
-  const [password, setPassword] = useState('')
-  const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
-  const [resetSent, setResetSent] = useState(false)
+  const [mode,        setMode]        = useState<'login' | 'signup' | 'reset' | 'set-password'>('login')
+  const [email,       setEmail]       = useState('')
+  const [password,    setPassword]    = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [loading,     setLoading]     = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
+  const [resetSent,   setResetSent]   = useState(false)
+
+  // Detect Supabase password-recovery redirect (URL hash contains type=recovery)
+  useEffect(() => {
+    const hash = window.location.hash
+    if (hash.includes('type=recovery')) {
+      setMode('set-password')
+    }
+  }, [])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -121,6 +130,37 @@ export default function VendorLoginPage() {
     setResetSent(true)
   }
 
+  async function handleSetPassword(e: React.FormEvent) {
+    e.preventDefault()
+    if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return }
+    setLoading(true)
+    setError(null)
+
+    const { error: updateErr } = await supabase.auth.updateUser({ password: newPassword })
+    if (updateErr) {
+      setError(updateErr.message)
+      setLoading(false)
+      return
+    }
+
+    // Password updated — now check vendor access and redirect
+    let checkResult: { ok: boolean; found: boolean; status: string | null } | null = null
+    try {
+      const res = await fetch('/api/vendor/check-access', { method: 'POST' })
+      checkResult = await res.json()
+    } catch { /* ignore */ }
+
+    setLoading(false)
+    if (checkResult?.found && checkResult.status !== 'suspended') {
+      router.push('/vendor/dashboard')
+    } else {
+      // Access not granted — go to sign-in so they can try the main app
+      router.push('/vendor/login')
+      setMode('login')
+      setError('Password updated. Please sign in.')
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-950 via-teal-900 to-teal-800 flex items-center justify-center p-6 relative overflow-hidden">
 
@@ -139,7 +179,46 @@ export default function VendorLoginPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">
-          {resetSent ? (
+          {mode === 'set-password' ? (
+            <>
+              <div className="mb-6">
+                <h2 className="text-xl font-bold text-gray-900">Set New Password</h2>
+                <p className="text-sm text-gray-500 mt-1">Choose a password for your vendor portal account.</p>
+              </div>
+              {error && (
+                <div className="mb-5 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+                  {error}
+                </div>
+              )}
+              <form onSubmit={handleSetPassword} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">New Password</label>
+                  <input
+                    type="password"
+                    required
+                    autoFocus
+                    minLength={6}
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-3 rounded-lg transition-colors shadow-sm disabled:opacity-60 text-sm mt-2"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                      Saving…
+                    </span>
+                  ) : 'Save Password & Sign In'}
+                </button>
+              </form>
+            </>
+          ) : resetSent ? (
             <div className="text-center py-4">
               <div className="w-14 h-14 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <svg className="w-7 h-7 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
