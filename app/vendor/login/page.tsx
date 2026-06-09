@@ -22,29 +22,36 @@ export default function VendorLoginPage() {
     }
   }, [])
 
+  async function checkAccess(accessToken: string): Promise<{ found: boolean; status: string | null; error: string | null }> {
+    try {
+      const res = await fetch('/api/vendor/check-access', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      })
+      const data = await res.json()
+      console.log('[vendor] access check result:', data)
+      return data
+    } catch (e) {
+      console.error('[vendor] check-access fetch error:', e)
+      return { found: false, status: null, error: 'Network error' }
+    }
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const { error: authErr } = await supabase.auth.signInWithPassword({ email, password })
-    if (authErr) {
-      setError(authErr.message)
+    const { data: { session }, error: authErr } = await supabase.auth.signInWithPassword({ email, password })
+    if (authErr || !session) {
+      setError(authErr?.message ?? 'Sign in failed')
       setLoading(false)
       return
     }
 
-    // Check vendor_portal_access via server-side API (uses service role — bypasses RLS)
-    let checkResult: { ok: boolean; found: boolean; status: string | null; email: string; error: string | null } | null = null
-    try {
-      const res = await fetch('/api/vendor/check-access', { method: 'POST' })
-      checkResult = await res.json()
-      console.log('[vendor-login] access check result:', checkResult)
-    } catch (e) {
-      console.error('[vendor-login] check-access fetch error:', e)
-    }
+    const checkResult = await checkAccess(session.access_token)
 
-    if (!checkResult?.found) {
+    if (!checkResult.found) {
       await supabase.auth.signOut()
       setError('Access denied. Contact your supplier to request portal access.')
       setLoading(false)
@@ -68,7 +75,6 @@ export default function VendorLoginPage() {
 
     const { error: signUpErr } = await supabase.auth.signUp({ email, password })
     if (signUpErr) {
-      // "User already registered" — tell them to sign in instead
       if (signUpErr.message.toLowerCase().includes('already') || signUpErr.message.toLowerCase().includes('registered')) {
         setMode('login')
         setError('An account with this email already exists. Please sign in with your existing password.')
@@ -80,31 +86,22 @@ export default function VendorLoginPage() {
     }
 
     // Try to sign in immediately (works when email confirmation is disabled)
-    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
-    if (signInErr) {
-      if (signInErr.message.toLowerCase().includes('invalid') || signInErr.message.toLowerCase().includes('credentials')) {
-        // Supabase silently no-oped the sign-up (email already exists, confirmation enabled)
+    const { data: { session }, error: signInErr } = await supabase.auth.signInWithPassword({ email, password })
+    if (signInErr || !session) {
+      if (!session && !signInErr) {
+        setResetSent(true) // email confirmation required
+      } else if (signInErr?.message.toLowerCase().includes('invalid') || signInErr?.message.toLowerCase().includes('credentials')) {
         setMode('login')
         setError('An account with this email already exists. Please sign in with your existing password.')
       } else {
-        // Email confirmation required — show check email screen
         setResetSent(true)
       }
       setLoading(false)
       return
     }
 
-    // Check access
-    let checkResult: { ok: boolean; found: boolean; status: string | null; email: string; error: string | null } | null = null
-    try {
-      const res = await fetch('/api/vendor/check-access', { method: 'POST' })
-      checkResult = await res.json()
-      console.log('[vendor-signup] access check result:', checkResult)
-    } catch (e) {
-      console.error('[vendor-signup] check-access fetch error:', e)
-    }
-
-    if (!checkResult?.found) {
+    const checkResult = await checkAccess(session.access_token)
+    if (!checkResult.found) {
       await supabase.auth.signOut()
       setError('Your email is not on the vendor access list. Check that you are using the invited email address.')
       setLoading(false)
@@ -144,11 +141,11 @@ export default function VendorLoginPage() {
     }
 
     // Password updated — now check vendor access and redirect
+    const { data: { session: updatedSession } } = await supabase.auth.getSession()
     let checkResult: { ok: boolean; found: boolean; status: string | null } | null = null
-    try {
-      const res = await fetch('/api/vendor/check-access', { method: 'POST' })
-      checkResult = await res.json()
-    } catch { /* ignore */ }
+    if (updatedSession) {
+      checkResult = await checkAccess(updatedSession.access_token)
+    }
 
     setLoading(false)
     if (checkResult?.found && checkResult.status !== 'suspended') {

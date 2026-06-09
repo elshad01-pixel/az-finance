@@ -1,37 +1,34 @@
 export const dynamic = 'force-dynamic'
 
-import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 
-export async function POST() {
-  const cookieStore = await cookies()
-  const supabaseUser = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {},
-      },
-    }
-  )
-  // eslint-disable-next-line @supabase/no-insecure-random -- getSession reads HttpOnly cookies; safe for server routes
-  const { data: { session } } = await supabaseUser.auth.getSession()
-  if (!session?.user?.email) {
-    return NextResponse.json({ ok: false, status: null, error: 'Not authenticated' }, { status: 401 })
+export async function POST(req: NextRequest) {
+  // Accept the Supabase access_token via Authorization header (avoids cookie timing issues)
+  const authHeader = req.headers.get('authorization')
+  const token = authHeader?.replace('Bearer ', '').trim()
+  if (!token) {
+    return NextResponse.json({ ok: false, status: null, found: false, error: 'No token' }, { status: 401 })
   }
-
-  const email = session.user.email.toLowerCase().trim()
-  console.log('[vendor/check-access] checking email:', email)
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!serviceKey) {
-    return NextResponse.json({ ok: false, status: null, error: 'Server misconfigured' }, { status: 500 })
+    return NextResponse.json({ ok: false, status: null, found: false, error: 'Server misconfigured' }, { status: 500 })
   }
 
-  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey)
+  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+
+  // Validate the JWT and get the user — reliable since token just came from signInWithPassword
+  const { data: { user }, error: authErr } = await admin.auth.getUser(token)
+  if (!user?.email) {
+    console.error('[vendor/check-access] token validation failed:', authErr?.message)
+    return NextResponse.json({ ok: false, status: null, found: false, error: 'Invalid token' }, { status: 401 })
+  }
+
+  const email = user.email.toLowerCase().trim()
+  console.log('[vendor/check-access] checking email:', email)
 
   const { data, error } = await admin
     .from('vendor_portal_access')
@@ -63,7 +60,6 @@ export async function POST() {
       data.status = 'active'
     }
   } else if (data.status === 'active') {
-    // Update last_login timestamp
     await admin
       .from('vendor_portal_access')
       .update({ last_login: new Date().toISOString() })
