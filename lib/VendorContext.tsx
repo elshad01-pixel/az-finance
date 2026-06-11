@@ -61,36 +61,26 @@ export function VendorProvider({ children }: { children: React.ReactNode }) {
 
     setUser(session.user)
 
-    // Look up vendor_portal_access by email
-    const { data: accessRow } = await supabase
-      .from('vendor_portal_access')
-      .select('id, company_id, vendor_id, email, status')
-      .eq('email', session.user.email ?? '')
-      .eq('status', 'active')
-      .maybeSingle()
+    // Use the API endpoint (service role) to bypass RLS on vendor_portal_access
+    try {
+      const res = await fetch('/api/vendor/check-access', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      })
+      const data = await res.json()
 
-    if (!accessRow) {
+      if (!data.found || data.status === 'suspended') {
+        setDenied(true)
+        setLoading(false)
+        return
+      }
+
+      setAccess(data.access as VendorAccess)
+      if (data.vendor) setVendor(data.vendor as VendorInfo)
+    } catch (e) {
+      console.error('[VendorContext] check-access error:', e)
       setDenied(true)
-      setLoading(false)
-      return
     }
-
-    setAccess(accessRow as VendorAccess)
-
-    // Update last_login
-    await supabase
-      .from('vendor_portal_access')
-      .update({ last_login: new Date().toISOString() })
-      .eq('id', accessRow.id)
-
-    // Load vendor info
-    const { data: vendorRow } = await supabase
-      .from('vendors')
-      .select('id, name, email, voen')
-      .eq('id', accessRow.vendor_id)
-      .maybeSingle()
-
-    if (vendorRow) setVendor(vendorRow as VendorInfo)
 
     setLoading(false)
   }
@@ -103,6 +93,7 @@ export function VendorProvider({ children }: { children: React.ReactNode }) {
       }
     })
     return () => subscription.unsubscribe()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function signOut() {

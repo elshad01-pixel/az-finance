@@ -69,11 +69,26 @@ export async function POST(req: NextRequest) {
       .eq('id', data.id)
   }
 
+  // Load vendor info
+  const { data: vendorRow } = await admin
+    .from('vendors')
+    .select('id, name, email, voen')
+    .eq('id', data.vendor_id)
+    .maybeSingle()
+
   return NextResponse.json({
-    ok:     true,
+    ok:         true,
     email,
-    status: data.status,
-    found:  true,
-    error:  null,
+    status:     data.status,
+    found:      true,
+    error:      null,
+    access: {
+      id:         data.id,
+      company_id: data.company_id,
+      vendor_id:  data.vendor_id,
+      email,
+      status:     data.status,
+    },
+    vendor: vendorRow ?? null,
   })
 }
